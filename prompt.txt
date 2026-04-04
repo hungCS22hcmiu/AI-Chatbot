@@ -1,0 +1,104 @@
+You are a senior software architect and AI engineer.
+
+I have an old project called "CodeThium AI" — a full-stack AI chatbot system that I built from scratch using:
+- React + Next.js frontend (possibly outdated)
+- Node.js + Express backend (auth, chat history, APIs)
+- FastAPI + PyTorch custom Transformer model (trained on small dataset ~1000 samples)
+
+Here is the current situation:
+- The AI model is weak and limited (small dataset, cannot answer general questions)
+- The system architecture is monolithic and partially outdated
+- The frontend UX is basic and may be obsolete
+- The system works, but is not production-ready
+
+My new goal is:
+- Replace or augment the custom model with LLM APIs (FREE or low-cost sources)
+- Allow users to ask ANYTHING (not limited to dataset)
+- Turn this into a modern AI assistant like ChatGPT (but simplified)
+
+Required features:
+- Chat with LLM (streaming responses if possible)
+- Send images (multimodal support if possible)
+- Send files (PDF, code files, etc.)
+- Code responses with syntax highlighting
+- Chat history (already exists, but can be improved)
+- Authentication (already exists)
+- Possibly real-time (WebSocket)
+
+Your tasks:
+
+1. 🔍 SYSTEM AUDIT
+- Analyze the current architecture (based on README below)
+- Identify major weaknesses in:
+  - AI layer
+  - Backend design
+  - Frontend UX
+  - Scalability
+  - Maintainability
+
+2. 🧠 ARCHITECTURE REDESIGN
+- Propose a NEW architecture that is:
+  - Modular
+  - Scalable
+  - Clean (production-ready)
+- Decide:
+  - Keep Node.js or migrate (e.g., to Go / keep hybrid)
+  - Role of FastAPI (remove or keep for AI proxy?)
+  - API Gateway design
+- Include a clear architecture diagram (text-based is fine)
+
+3. 🤖 LLM INTEGRATION STRATEGY
+- Suggest FREE or cheap LLM APIs (important)
+  - e.g., OpenRouter, Together.ai, Groq, etc.
+- Design a provider abstraction layer:
+  - so I can switch between LLM providers easily
+- Include:
+  - prompt design
+  - streaming handling
+  - rate limiting strategy
+
+4. 🧱 FEATURE IMPLEMENTATION PLAN
+Break down how to implement:
+- user login and register via email
+- Chat system (LLM-based)
+- Image upload + processing
+- File upload + parsing (PDF, code)
+- Syntax highlighting (frontend)
+- Chat history improvement (search, titles, etc.)
+
+5. 🧰 TECH STACK DECISION
+Give a modern stack recommendation:
+- Frontend (React? Next.js? keep or rebuild?)
+- Backend (Node.js? Go? hybrid?)
+- Database (PostgreSQL? add Redis?)
+- Realtime (WebSocket? SSE?)
+
+6. 🗺️ STEP-BY-STEP ROADMAP (VERY IMPORTANT)
+Create a phased plan:
+- Phase 1: Quick upgrade (MVP with LLM API)
+- Phase 2: Feature expansion
+- Phase 3: Scaling + optimization
+Each phase must include:
+  - tasks
+  - expected outcome
+  - difficulty
+
+7. 💡 BONUS (IMPORTANT FOR INTERNSHIP LEVEL-UP)
+- Suggest features that make this project stand out for backend internship:
+  - e.g., caching, AI agents, tool calling, RAG, etc.
+- Suggest how to present this project in CV
+
+Here is my current README:
+[PASTE README HERE]
+
+Constraints:
+- Prefer practical, implementable solutions
+- Avoid overengineering
+- Focus on learning + portfolio impact
+- I am a student aiming for backend internship in 6 months
+
+Output format:
+- Structured
+- Clear sections
+- Actionable (not vague)
+
