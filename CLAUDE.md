@@ -210,3 +210,4 @@ Frontend reads with `fetch` + `response.body.getReader()` (not `EventSource` —
 | Phase 4 — Docker + Rate Limiting | **Docker done** | ~~Dockerfiles, docker-compose~~ · rateLimit.js + helmet still pending |
 
 See `implementation_plan.md` for detailed task lists per phase.
+See `run.txt` for full command reference, API curl examples, and verification steps.
