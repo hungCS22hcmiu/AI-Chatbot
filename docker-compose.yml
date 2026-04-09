@@ -1,0 +1,56 @@
+services:
+  postpres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      PGPORT: ${DB_PORT}
+    ports:
+      - "${DB_PORT}:${DB_PORT}"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME} -p ${DB_PORT}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  local-model:
+    build: ./codethium-model
+    ports:
+      - "8000:8000"
+    environment:
+      MODEL_DIR: /app
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  server:
+    build: ./codethium-ai-web/server
+    ports:
+      - "${PORT}:${PORT}"
+    env_file: ./.env
+    environment:
+      LOCAL_MODEL_URL: http://local-model:8000
+    depends_on:
+      postpres:
+        condition: service_healthy
+      local-model:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./codethium-ai-web
+      args:
+        REACT_APP_API_URL: http://localhost:${PORT}
+    ports:
+      - "3000:80"
+    depends_on:
+      - server
+
+volumes:
+  postgres_data:

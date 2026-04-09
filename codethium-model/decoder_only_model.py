@@ -1,4 +1,5 @@
 import sys
+import os
 import torch
 import sentencepiece as spm
 from fastapi import FastAPI
@@ -11,12 +12,13 @@ from model_components import Vocab, tinyTransformerDecoderOnly, generate
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+MODEL_DIR = os.environ.get("MODEL_DIR", os.path.dirname(os.path.abspath(__file__)))
 
 sp_processor = spm.SentencePieceProcessor()
-sp_processor.load("/Users/dangnguyengroup/NN-DL/Code Assistant/codethium-model/fullspm.model")
+sp_processor.load(os.path.join(MODEL_DIR, "fullspm.model"))
 
-vocab_path = "/Users/dangnguyengroup/NN-DL/Code Assistant/codethium-model/vocab.pth"
-portable_vocab_path = "/Users/dangnguyengroup/NN-DL/Code Assistant/codethium-model/vocab_portable.pth"
+vocab_path = os.path.join(MODEL_DIR, "vocab.pth")
+portable_vocab_path = os.path.join(MODEL_DIR, "vocab_portable.pth")
 
 def load_vocab(path, portable_path, sp_processor, device):
     
@@ -64,7 +66,7 @@ model = tinyTransformerDecoderOnly(
 ).to(device)
 
 
-state_dict_path = "/Users/dangnguyengroup/NN-DL/Code Assistant/codethium-model/tiny_transformer.pth"
+state_dict_path = os.path.join(MODEL_DIR, "tiny_transformer.pth")
 state_dict = torch.load(state_dict_path, map_location=device, weights_only=True)
 
 
@@ -89,6 +91,10 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     message: str
 
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
 @app.post("/chat")
 def chat(req: ChatRequest):
     prompt = "<BOS> # problem: " + req.message.strip() + " <NL> "
@@ -96,6 +102,5 @@ def chat(req: ChatRequest):
     return {"reply": output}
 
 if __name__ == "__main__":
-    
-    uvicorn.run("decoder_only_model:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("decoder_only_model:app", host="0.0.0.0", port=8000)
 

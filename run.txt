@@ -1,0 +1,257 @@
+================================================================================
+  CodeThium — Commands Reference
+================================================================================
+
+--------------------------------------------------------------------------------
+  PREREQUISITES
+--------------------------------------------------------------------------------
+
+  - Docker Desktop running          (for Docker setup)
+  - Node.js v20+, npm               (for local setup)
+  - PostgreSQL running locally      (for local setup only)
+
+  .env location: AI-Chatbot/.env  (root of repo, gitignored)
+  Required vars:
+    PORT=4000
+    DB_HOST=postpres         # Docker service name; use "localhost" for local dev
+    DB_PORT=5433             # use 5432 for default local Postgres
+    DB_USER=SE
+    DB_PASSWORD=230292Huong
+    DB_NAME=codethium
+    JWT_SECRET=H2qH8JlJlwrQQV6qk8WpskCYLhbD5mmkgHYxrOqHjky
+    LLM_PROVIDER=openrouter
+    OPENROUTER_API_KEY=sk-or-...
+    GROQ_API_KEY=gsk_...
+
+
+================================================================================
+  OPTION A — DOCKER (recommended)
+================================================================================
+
+  Starts all 3 services: PostgreSQL + Express backend + React frontend.
+  Run all commands from the repo root (AI-Chatbot/).
+
+  ── Start ──────────────────────────────────────────────────────────────────────
+
+    docker-compose up --build
+
+    First run:  builds all 3 images, runs DB migrations, starts containers.
+    Subsequent: docker-compose up  (skip --build if code unchanged)
+
+    Expected output:
+      postpres  | database system is ready to accept connections
+      server    | [migrate] Applied 001_initial.sql
+      server    | [migrate] Applied 002_messages_table.sql
+      server    | Connected to PostgreSQL database
+      server    | Server running on http://localhost:4000
+      frontend  | (nginx ready, serving React on port 80 → host 3000)
+
+    Open in browser:
+      Frontend  →  http://localhost:3000
+      API       →  http://localhost:4000
+
+  ── Stop ───────────────────────────────────────────────────────────────────────
+
+    docker-compose down          # stop, keep DB data
+    docker-compose down -v       # stop + wipe DB volume (fresh start)
+
+  ── Rebuild after code changes ─────────────────────────────────────────────────
+
+    docker-compose up --build server     # backend code changed
+    docker-compose up --build frontend   # frontend code changed
+    docker-compose up --build            # everything changed
+
+  ── View logs ──────────────────────────────────────────────────────────────────
+
+    docker-compose logs -f server
+    docker-compose logs -f frontend
+    docker-compose logs -f postpres
+
+  ── Open psql inside the DB container ─────────────────────────────────────────
+
+    docker exec -it $(docker-compose ps -q postpres) psql -U SE -d codethium -p 5433
+
+
+================================================================================
+  OPTION B — LOCAL DEV (no Docker)
+================================================================================
+
+  Requires a local PostgreSQL instance with DB "codethium" already created.
+  Before running: set DB_HOST=localhost and DB_PORT=5432 in .env
+
+  ── Backend ────────────────────────────────────────────────────────────────────
+
+    cd codethium-ai-web/server
+    npm install
+    npm run dev          # http://localhost:4000  (nodemon auto-reload)
+
+  ── Frontend ───────────────────────────────────────────────────────────────────
+
+    # Create codethium-ai-web/.env with:
+    #   REACT_APP_API_URL=http://localhost:4000
+
+    cd codethium-ai-web
+    npm install
+    npm start            # http://localhost:3000
+
+  ── Run migrations manually ────────────────────────────────────────────────────
+
+    cd codethium-ai-web/server
+    node db/migrate.js
+
+
+================================================================================
+  VERIFY DB TABLES
+================================================================================
+
+  After first start, confirm migrations ran:
+
+  Docker:
+    docker exec -it $(docker-compose ps -q postpres) psql -U SE -d codethium -p 5433
+    \dt
+    SELECT * FROM schema_migrations;
+
+  Local:
+    psql -U SE -d codethium
+    \dt
+    SELECT * FROM schema_migrations;
+
+  Expected tables:
+    chats, messages, schema_migrations, users
+
+
+================================================================================
+  API ENDPOINTS — TEST WITH CURL
+================================================================================
+
+  BASE_URL=http://localhost:4000
+  Cookie file: /tmp/cookies.txt
+
+  ── AUTH ───────────────────────────────────────────────────────────────────────
+
+  Register
+    curl -s -X POST $BASE_URL/api/register \
+      -H "Content-Type: application/json" \
+      -d '{"username":"testuser","email":"test@example.com","password":"secret123"}' | jq
+    → 201 {"user":{"id":1,"username":"testuser","email":"test@example.com",...}}
+    → 409 if username/email already taken
+
+  Login  (saves httpOnly cookie to file)
+    curl -s -c /tmp/cookies.txt -X POST $BASE_URL/api/login \
+      -H "Content-Type: application/json" \
+      -d '{"username":"testuser","password":"secret123"}' | jq
+    → 200 {"user":{"id":1,"username":"testuser","email":"test@example.com"}}
+    → 401 if wrong credentials
+
+  Get current user  (auth via cookie)
+    curl -s -b /tmp/cookies.txt $BASE_URL/api/me | jq
+    → 200 {"user":{"id":1,"username":"testuser","email":"test@example.com",...}}
+    → 401 if not logged in
+
+  Change password
+    curl -s -b /tmp/cookies.txt -X POST $BASE_URL/api/change-password \
+      -H "Content-Type: application/json" \
+      -d '{"currentPassword":"secret123","newPassword":"newpass456"}' | jq
+    → 200 {"message":"Password changed successfully"}
+    → 401 if currentPassword is wrong
+
+  Logout
+    curl -s -b /tmp/cookies.txt -X POST $BASE_URL/api/logout | jq
+    → 200 {"message":"Logged out"}
+
+  ── CHATS ──────────────────────────────────────────────────────────────────────
+
+  Create chat
+    curl -s -b /tmp/cookies.txt -X POST $BASE_URL/api/chats \
+      -H "Content-Type: application/json" \
+      -d '{"title":"My First Chat","messages":[]}' | jq
+    → 200 {"chat":{"id":1,"user_id":1,"title":"My First Chat",...}}
+
+  List chats
+    curl -s -b /tmp/cookies.txt $BASE_URL/api/chats | jq
+    → 200 {"chats":[{"id":1,"title":"My First Chat",...}]}
+
+  Update chat  (replace messages array)
+    curl -s -b /tmp/cookies.txt -X PUT $BASE_URL/api/chats/1 \
+      -H "Content-Type: application/json" \
+      -d '{"messages":[{"sender":"user","text":"Hello"}]}' | jq
+    → 200 {"chat":{"id":1,...}}
+
+  Delete chat
+    curl -s -b /tmp/cookies.txt -X DELETE $BASE_URL/api/chats/1 | jq
+    → 200 {"message":"Chat deleted"}
+
+  ── ERROR CASES ────────────────────────────────────────────────────────────────
+
+  Missing auth token
+    curl -s $BASE_URL/api/me | jq
+    → 401 {"error":"No token provided"}
+
+  Invalid token
+    curl -s -H "Authorization: Bearer badtoken" $BASE_URL/api/me | jq
+    → 401 {"error":"Invalid token"}
+
+
+================================================================================
+  PROJECT STRUCTURE
+================================================================================
+
+  AI-Chatbot/
+  ├── .env                              ← secrets (gitignored)
+  ├── .gitignore
+  ├── docker-compose.yml                ← postpres + server + frontend
+  ├── run.txt                           ← this file
+  ├── CLAUDE.md                         ← architecture reference
+  ├── implementation_plan.md
+  └── codethium-ai-web/
+      ├── Dockerfile                    ← React build (node) → serve (nginx)
+      ├── nginx.conf                    ← SPA routing config
+      ├── .dockerignore
+      ├── src/                          ← React frontend (Phase 3 pending)
+      │   ├── App.js
+      │   ├── components/
+      │   │   ├── LoginPage.js
+      │   │   └── ChatbotPage.js
+      └── server/
+          ├── Dockerfile                ← node:20-alpine
+          ├── .dockerignore
+          ├── index.js                  ← slim entry point (~37 lines)
+          ├── config/index.js           ← env validation, fail-fast
+          ├── db/
+          │   ├── pool.js               ← pg Pool singleton
+          │   ├── migrate.js            ← migration runner
+          │   └── migrations/
+          │       ├── 001_initial.sql
+          │       └── 002_messages_table.sql
+          ├── middleware/
+          │   ├── auth.js               ← JWT verify
+          │   └── errorHandler.js
+          ├── routes/
+          │   ├── auth.js               ← register/login/logout/me/change-password
+          │   └── chat.js               ← CRUD /api/chats
+          └── utils/token.js            ← signToken helper
+
+
+================================================================================
+  ROADMAP
+================================================================================
+
+  Phase 1 — DB + Backend Restructure      [DONE]
+    Modular Express, migrations, clean env config, Docker for server + DB
+
+  Phase 1.5 — Frontend Docker             [DONE]
+    codethium-ai-web/Dockerfile, nginx.conf, frontend service in docker-compose
+
+  Phase 2 — LLM Integration + Streaming  [PENDING]
+    server/services/llm/                  ← OpenRouter + Groq providers
+    POST /api/chat/stream                 ← SSE streaming endpoint
+    server/middleware/rateLimit.js        ← express-rate-limit
+
+  Phase 3 — Frontend Overhaul            [PENDING]
+    src/context/AuthContext.js            ← persist auth across refresh
+    src/services/api.js                   ← centralized Axios client
+    src/services/streamChat.js            ← SSE reader
+    src/components/chat/                  ← split ChatbotPage into components
+    Fix XSS (dangerouslySetInnerHTML)
+
+================================================================================
