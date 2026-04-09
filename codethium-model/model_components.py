@@ -15,8 +15,11 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 from pathlib import Path
 import matplotlib.pyplot as plt
-from IPython import display
-display.set_matplotlib_formats('svg')
+try:
+    from IPython import display
+    display.set_matplotlib_formats('svg')
+except ImportError:
+    pass
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 device
