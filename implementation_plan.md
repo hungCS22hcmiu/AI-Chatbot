@@ -13,9 +13,9 @@ Replace the non-functional custom PyTorch model with real LLM APIs, restructure 
 | Phase | Status | Scope |
 |-------|--------|-------|
 | Phase 1 — DB + Backend Restructure | ✅ DONE | Modular Express, migrations, clean env config |
-| Phase 2 — LLM Integration + Streaming | 🔲 Pending | LLM provider abstraction, SSE endpoint |
-| Phase 3 — Frontend Overhaul | 🔲 Pending | AuthContext, api.js, streamChat.js, split ChatbotPage |
-| Phase 4 — Docker + Security | 🔲 Partial | Docker ✅ done · rateLimit.js + helmet pending |
+| Phase 2 — Hybrid LLM Integration + Streaming | 🔲 Pending | Fix local model + external API providers + SSE endpoint |
+| Phase 3 — Frontend Overhaul | 🔲 Pending | AuthContext, api.js, streamChat.js, split ChatbotPage, model selector |
+| Phase 4 — Docker + Security | 🔲 Partial | Docker ✅ done · local-model service + rateLimit.js + helmet pending |
 | Phase 5 — File & Image Upload | 🔲 Pending | multer, pdf-parse, multimodal LLM |
 | Phase 6 — Chat UX Polish | 🔲 Pending | Auto-title, rename, date grouping, search |
 | Phase 7 — Production Hardening | 🔲 Pending | RAG, tests, deployment |
@@ -46,50 +46,90 @@ Replace the non-functional custom PyTorch model with real LLM APIs, restructure 
 
 ---
 
-## Phase 2 — LLM Integration + Streaming 🔲
+## Phase 2 — Hybrid LLM Integration + Streaming 🔲
 
-### Provider Abstraction
+### Strategy
+
+Keep the custom-trained local model (2.6M param transformer, Python code generation) as a selectable option alongside external LLM APIs (OpenRouter, Groq). All providers share the same interface. Express is the single gateway — the frontend never calls FastAPI directly.
+
+### Step 2a — Fix Custom Model (`codethium-model/`) ✅ DONE
+
+- [x] Fix 4 hardcoded absolute paths in `decoder_only_model.py` → use `MODEL_DIR` env var
+- [x] Fix `model_components.py` → wrap IPython import in try/except (crashes outside notebooks)
+- [x] Add `/health` GET endpoint to `decoder_only_model.py`
+- [x] Remove `reload=True` from uvicorn call
+
+### Step 2b — Dockerize Custom Model
+
+- [ ] Create `codethium-model/requirements-inference.txt` — slim deps: torch, sentencepiece, fastapi, uvicorn, numpy, pydantic
+- [ ] Create `codethium-model/Dockerfile` — python:3.11-slim, copies weights, sets MODEL_DIR=/app
+- [ ] Add `local-model` service to `docker-compose.yml` with healthcheck (`/health` endpoint, 30s start_period)
+- [ ] Add `LOCAL_MODEL_URL: http://local-model:8000` to server service env in docker-compose
+- [ ] Add `local-model` to server's `depends_on`
+
+### Step 2c — Provider Abstraction
 
 ```
 server/services/llm/
-  BaseLLMProvider.js     — interface: chat() + chatStream() async generator
-  OpenRouterProvider.js  — OpenAI-compatible fetch to openrouter.ai/api/v1
-  GroqProvider.js        — same pattern, different base URL
-  index.js               — factory: reads LLM_PROVIDER env var
+  BaseLLMProvider.js            — abstract: chat(), chatStream(), getModelName()
+  OpenAICompatibleProvider.js   — shared fetch + SSE line parsing (Node native fetch)
+  OpenRouterProvider.js         — extends OpenAICompatible (openrouter.ai/api/v1)
+  GroqProvider.js               — extends OpenAICompatible (api.groq.com/openai/v1)
+  LocalModelProvider.js         — calls FastAPI /chat, yields full response as one chunk
+  index.js                      — factory: getProvider("openrouter"|"groq"|"local")
 ```
-
-### Tasks
 
 - [ ] Create `server/services/llm/BaseLLMProvider.js`
+- [ ] Create `server/services/llm/OpenAICompatibleProvider.js`
 - [ ] Create `server/services/llm/OpenRouterProvider.js`
 - [ ] Create `server/services/llm/GroqProvider.js`
+- [ ] Create `server/services/llm/LocalModelProvider.js`
 - [ ] Create `server/services/llm/index.js` — provider factory
-- [ ] Add `POST /api/chat/stream` SSE endpoint to `server/routes/chat.js`
-- [ ] Update `server/routes/chat.js` to store messages in the `messages` table (not JSON blob in `chats.message`)
+- [ ] Update `server/config/index.js` — add `LOCAL_MODEL_URL`, `OPENROUTER_MODEL`, `GROQ_MODEL`
 
-### SSE Streaming Endpoint
+### Step 2d — SSE Streaming Endpoint
 
-`POST /api/chat/stream`:
+- [ ] Add `POST /api/chat/stream` to `server/routes/chat.js`
+- [ ] Update `server/routes/chat.js` to store messages in the `messages` table (not JSON blob)
+
+`POST /api/chat/stream` body: `{ chatId, content, model? }` where model is `"openrouter"` | `"groq"` | `"local"`:
 
 ```
-1. authMiddleware → Zod validate {chatId, content}
-2. Save user message to messages table
-3. Load last 20 messages from DB as LLM context array
-4. Set SSE headers: Content-Type: text/event-stream
-5. Call provider.chatStream() async generator
-6. For each chunk → write: event: token\ndata: {"content":"..."}\n\n
-7. On complete → save assistant message, write: event: done\ndata: {"messageId":N}\n\n
-8. On error → write: event: error\ndata: {"error":"..."}\n\n
+1. authMiddleware → Zod validate {chatId, content, model?}
+2. Verify chat belongs to req.userId
+3. Save user message to messages table
+4. Load last 20 messages from DB as LLM context array
+5. Resolve provider: req.body.model || config.LLM_PROVIDER
+6. Set SSE headers: Content-Type: text/event-stream, X-Accel-Buffering: no
+7. Call provider.chatStream() async generator
+8. For each chunk → write: event: token\ndata: {"content":"..."}\n\n
+9. On complete → save assistant message (metadata: {provider, model}), write: event: done\ndata: {"messageId":N,"model":"..."}\n\n
+10. On error → write: event: error\ndata: {"error":"..."}\n\n
 ```
+
+**Provider behavior:**
+- OpenRouter/Groq: real token-by-token streaming
+- LocalModel: single POST to FastAPI, yields full response as one chunk (model doesn't natively stream)
 
 ### Verification
 
 ```bash
+# Test local model directly
+cd codethium-model && python decoder_only_model.py
+curl -X POST http://localhost:8000/chat -H "Content-Type: application/json" \
+  -d '{"message":"write a function to add two numbers"}'
+
+# Test SSE endpoint — local model
 curl -N -X POST http://localhost:4000/api/chat/stream \
   -H "Cookie: token=<jwt>" \
   -H "Content-Type: application/json" \
-  -d '{"chatId":1,"content":"Hello"}'
-# → streams token events to terminal
+  -d '{"chatId":1,"content":"write a sorting function","model":"local"}'
+
+# Test SSE endpoint — OpenRouter
+curl -N -X POST http://localhost:4000/api/chat/stream \
+  -H "Cookie: token=<jwt>" \
+  -H "Content-Type: application/json" \
+  -d '{"chatId":1,"content":"What is recursion?","model":"openrouter"}'
 ```
 
 ---
@@ -117,7 +157,17 @@ Replace the 416-line `ChatbotPage.js` god component:
 | `src/components/chat/MessageList.js` | Scrollable area, auto-scroll to bottom |
 | `src/components/chat/MessageBubble.js` | Single message, user vs assistant styling |
 | `src/components/chat/MessageContent.js` | Markdown + syntax highlighting (`react-markdown` + `react-syntax-highlighter` + `remark-gfm`); **replaces `dangerouslySetInnerHTML`** |
-| `src/components/chat/ChatInput.js` | Auto-resize textarea, send button, streaming spinner |
+| `src/components/chat/ChatInput.js` | Auto-resize textarea, send button, streaming spinner, **model selector dropdown** |
+
+### Model Selector Dropdown (in ChatInput.js)
+
+A dropdown lets users choose which LLM to use per-message. Stored in React state, sent as `model` field in the stream request.
+
+| Display Name | Value | Notes |
+|---|---|---|
+| Llama 3 (OpenRouter) | `openrouter` | General purpose, best quality — default |
+| Llama 3 (Groq) | `groq` | Fast inference |
+| CodeThium Local | `local` | Custom-trained Python code model |
 
 ### Tasks
 
@@ -151,13 +201,16 @@ Replace the 416-line `ChatbotPage.js` god component:
 
 ## Phase 4 — Docker + Security 🔲 Partial
 
-### Docker ✅ DONE
+### Docker
 
 | File | Status |
 |------|--------|
 | `codethium-ai-web/server/Dockerfile` | ✅ Done |
 | `codethium-ai-web/Dockerfile` | ✅ Done (multi-stage nginx) |
-| `docker-compose.yml` | ✅ Done |
+| `docker-compose.yml` | ✅ Done (postgres + server + frontend) |
+| `codethium-model/Dockerfile` | 🔲 Pending (Phase 2) |
+| `codethium-model/requirements-inference.txt` | 🔲 Pending (Phase 2) |
+| `docker-compose.yml` — `local-model` service | 🔲 Pending (Phase 2) |
 
 ### Security (Pending)
 
@@ -276,11 +329,17 @@ docker-compose.yml             (repo root)
 ### To Create in Phase 2–7
 
 ```
+codethium-model/
+  Dockerfile                               (Phase 2)
+  requirements-inference.txt              (Phase 2)
+
 codethium-ai-web/server/
   middleware/rateLimit.js                  (Phase 4)
   services/llm/BaseLLMProvider.js          (Phase 2)
+  services/llm/OpenAICompatibleProvider.js (Phase 2)
   services/llm/OpenRouterProvider.js       (Phase 2)
   services/llm/GroqProvider.js             (Phase 2)
+  services/llm/LocalModelProvider.js       (Phase 2)
   services/llm/index.js                    (Phase 2)
   services/fileParser.js                   (Phase 5)
   services/rag.js                          (Phase 7)
@@ -318,15 +377,17 @@ codethium-ai-web/server/package.json       → removed passport × 4, added zod 
 ### To Modify in Phase 2–7
 
 ```
-codethium-ai-web/server/routes/chat.js    → add POST /api/chat/stream (Phase 2)
+codethium-model/decoder_only_model.py     → fix hardcoded paths, add /health, remove reload=True (Phase 2)
+codethium-model/model_components.py       → wrap IPython import in try/except (Phase 2)
+codethium-ai-web/server/config/index.js   → add LOCAL_MODEL_URL, OPENROUTER_MODEL, GROQ_MODEL (Phase 2)
+codethium-ai-web/server/routes/chat.js    → add POST /api/chat/stream with hybrid provider (Phase 2)
 codethium-ai-web/server/index.js          → add helmet + rateLimit (Phase 4)
+docker-compose.yml                        → add local-model service (Phase 2)
 codethium-ai-web/src/App.js               → add AuthContext (Phase 3)
 codethium-ai-web/src/components/LoginPage.js → use api.js (Phase 3)
 codethium-ai-web/package.json             → remove passport × 4, add markdown libs (Phase 3)
 ```
 
-### Archived
+### Note on Custom Model
 
-```
-codethium-model/   → archived (FastAPI + custom model no longer used)
-```
+`codethium-model/` is NOT archived — it is kept as a selectable LLM provider ("CodeThium Local") routed through Express. The FastAPI server is containerized alongside the other services. It specializes in Python code generation (trained on MBPP dataset).
