@@ -59,13 +59,13 @@ Keep the custom-trained local model (2.6M param transformer, Python code generat
 - [x] Add `/health` GET endpoint to `decoder_only_model.py`
 - [x] Remove `reload=True` from uvicorn call
 
-### Step 2b — Dockerize Custom Model
+### Step 2b — Dockerize Custom Model ✅ DONE
 
-- [ ] Create `codethium-model/requirements-inference.txt` — slim deps: torch, sentencepiece, fastapi, uvicorn, numpy, pydantic
-- [ ] Create `codethium-model/Dockerfile` — python:3.11-slim, copies weights, sets MODEL_DIR=/app
-- [ ] Add `local-model` service to `docker-compose.yml` with healthcheck (`/health` endpoint, 30s start_period)
-- [ ] Add `LOCAL_MODEL_URL: http://local-model:8000` to server service env in docker-compose
-- [ ] Add `local-model` to server's `depends_on`
+- [x] Create `codethium-model/requirements-inference.txt` — slim deps: torch, sentencepiece, fastapi, uvicorn, numpy, pydantic
+- [x] Create `codethium-model/Dockerfile` — python:3.11-slim, copies weights, sets MODEL_DIR=/app
+- [x] Add `local-model` service to `docker-compose.yml` with healthcheck (`/health` endpoint, 30s start_period)
+- [x] Add `LOCAL_MODEL_URL: http://local-model:8000` to server service env in docker-compose
+- [x] Add `local-model` to server's `depends_on`
 
 ### Step 2c — Provider Abstraction
 

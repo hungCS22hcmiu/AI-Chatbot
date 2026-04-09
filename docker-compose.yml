@@ -16,13 +16,30 @@ services:
       timeout: 5s
       retries: 5
 
+  local-model:
+    build: ./codethium-model
+    ports:
+      - "8000:8000"
+    environment:
+      MODEL_DIR: /app
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
   server:
     build: ./codethium-ai-web/server
     ports:
       - "${PORT}:${PORT}"
     env_file: ./.env
+    environment:
+      LOCAL_MODEL_URL: http://local-model:8000
     depends_on:
       postpres:
+        condition: service_healthy
+      local-model:
         condition: service_healthy
 
   frontend:

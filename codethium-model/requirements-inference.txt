@@ -1,0 +1,5 @@
+sentencepiece
+fastapi
+uvicorn
+numpy
+pydantic

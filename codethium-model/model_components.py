@@ -11,10 +11,17 @@ import os
 import math
 import random
 from typing import List, Tuple, Optional
-from tqdm import tqdm
-import matplotlib.pyplot as plt
+try:
+    from tqdm import tqdm
+except ImportError:
+    tqdm = None
+
+try:
+    import matplotlib.pyplot as plt
+except ImportError:
+    plt = None
+
 from pathlib import Path
-import matplotlib.pyplot as plt
 try:
     from IPython import display
     display.set_matplotlib_formats('svg')
