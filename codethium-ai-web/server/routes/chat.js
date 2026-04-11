@@ -43,26 +43,46 @@ router.post('/stream', authMiddleware, async (req, res) => {
     );
     const messages = historyResult.rows;
 
-    const provider = getProvider(model);
-
     // SSE headers
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders();
 
-    let fullResponse = '';
+    // Try requested provider, fallback on 429
+    const FALLBACK = { openrouter: 'groq', groq: 'openrouter' };
+    const requested = model || 'openrouter';
+    let provider = getProvider(requested);
+    let usedProvider = requested;
 
-    for await (const chunk of provider.chatStream(messages)) {
-      fullResponse += chunk;
-      res.write(`event: token\ndata: ${JSON.stringify({ content: chunk })}\n\n`);
+    let fullResponse = '';
+    try {
+      for await (const chunk of provider.chatStream(messages)) {
+        fullResponse += chunk;
+        res.write(`event: token\ndata: ${JSON.stringify({ content: chunk })}\n\n`);
+      }
+    } catch (streamErr) {
+      if (streamErr.message.includes('429') && FALLBACK[requested]) {
+        const fallbackName = FALLBACK[requested];
+        console.log(`Provider ${requested} rate-limited, falling back to ${fallbackName}`);
+        res.write(`event: info\ndata: ${JSON.stringify({ message: `${requested} rate-limited, using ${fallbackName}` })}\n\n`);
+        provider = getProvider(fallbackName);
+        usedProvider = fallbackName;
+        fullResponse = '';
+        for await (const chunk of provider.chatStream(messages)) {
+          fullResponse += chunk;
+          res.write(`event: token\ndata: ${JSON.stringify({ content: chunk })}\n\n`);
+        }
+      } else {
+        throw streamErr;
+      }
     }
 
     // Save assistant message
     const saved = await pool.query(
       `INSERT INTO messages (chat_id, role, content, metadata)
        VALUES ($1, 'assistant', $2, $3) RETURNING id`,
-      [chatId, fullResponse, JSON.stringify({ provider: model || 'default', model: provider.getModelName() })]
+      [chatId, fullResponse, JSON.stringify({ provider: usedProvider, model: provider.getModelName() })]
     );
 
     res.write(`event: done\ndata: ${JSON.stringify({ messageId: saved.rows[0].id, model: provider.getModelName() })}\n\n`);

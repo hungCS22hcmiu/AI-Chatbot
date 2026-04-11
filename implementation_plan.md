@@ -13,9 +13,9 @@ Replace the non-functional custom PyTorch model with real LLM APIs, restructure 
 | Phase | Status | Scope |
 |-------|--------|-------|
 | Phase 1 — DB + Backend Restructure | ✅ DONE | Modular Express, migrations, clean env config |
-| Phase 2 — Hybrid LLM Integration + Streaming | 🔲 Pending | Fix local model + external API providers + SSE endpoint |
-| Phase 3 — Frontend Overhaul | 🔲 Pending | AuthContext, api.js, streamChat.js, split ChatbotPage, model selector |
-| Phase 4 — Docker + Security | 🔲 Partial | Docker ✅ done · local-model service + rateLimit.js + helmet pending |
+| Phase 2 — Hybrid LLM Integration + Streaming | ✅ DONE | Local model + OpenRouter/Groq providers + SSE endpoint + 429 fallback |
+| Phase 3 — Frontend Overhaul | ✅ DONE | AuthContext, api.js, streamChat.js, split ChatbotPage, model selector |
+| Phase 4 — Docker + Security | 🔲 Partial | Docker ✅ done · local-model ✅ done · rateLimit.js + helmet pending |
 | Phase 5 — File & Image Upload | 🔲 Pending | multer, pdf-parse, multimodal LLM |
 | Phase 6 — Chat UX Polish | 🔲 Pending | Auto-title, rename, date grouping, search |
 | Phase 7 — Production Hardening | 🔲 Pending | RAG, tests, deployment |
@@ -67,7 +67,7 @@ Keep the custom-trained local model (2.6M param transformer, Python code generat
 - [x] Add `LOCAL_MODEL_URL: http://local-model:8000` to server service env in docker-compose
 - [x] Add `local-model` to server's `depends_on`
 
-### Step 2c — Provider Abstraction
+### Step 2c — Provider Abstraction ✅ DONE
 
 ```
 server/services/llm/
@@ -79,18 +79,20 @@ server/services/llm/
   index.js                      — factory: getProvider("openrouter"|"groq"|"local")
 ```
 
-- [ ] Create `server/services/llm/BaseLLMProvider.js`
-- [ ] Create `server/services/llm/OpenAICompatibleProvider.js`
-- [ ] Create `server/services/llm/OpenRouterProvider.js`
-- [ ] Create `server/services/llm/GroqProvider.js`
-- [ ] Create `server/services/llm/LocalModelProvider.js`
-- [ ] Create `server/services/llm/index.js` — provider factory
-- [ ] Update `server/config/index.js` — add `LOCAL_MODEL_URL`, `OPENROUTER_MODEL`, `GROQ_MODEL`
+- [x] Create `server/services/llm/BaseLLMProvider.js`
+- [x] Create `server/services/llm/OpenAICompatibleProvider.js`
+- [x] Create `server/services/llm/OpenRouterProvider.js`
+- [x] Create `server/services/llm/GroqProvider.js`
+- [x] Create `server/services/llm/LocalModelProvider.js`
+- [x] Create `server/services/llm/index.js` — provider factory
+- [x] Update `server/config/index.js` — add `LOCAL_MODEL_URL`, `OPENROUTER_MODEL`, `GROQ_MODEL`
 
-### Step 2d — SSE Streaming Endpoint
+### Step 2d — SSE Streaming Endpoint ✅ DONE
 
-- [ ] Add `POST /api/chat/stream` to `server/routes/chat.js`
-- [ ] Update `server/routes/chat.js` to store messages in the `messages` table (not JSON blob)
+- [x] Add `POST /api/chats/stream` to `server/routes/chat.js`
+- [x] Update `server/routes/chat.js` to store messages in the `messages` table (not JSON blob)
+- [x] Add automatic 429 fallback (OpenRouter → Groq, Groq → OpenRouter)
+- [x] Add `GET /api/chats/:id/messages` endpoint for loading chat history
 
 `POST /api/chat/stream` body: `{ chatId, content, model? }` where model is `"openrouter"` | `"groq"` | `"local"`:
 
@@ -134,7 +136,7 @@ curl -N -X POST http://localhost:4000/api/chat/stream \
 
 ---
 
-## Phase 3 — Frontend Overhaul 🔲
+## Phase 3 — Frontend Overhaul ✅ DONE
 
 ### Auth Persistence Fix
 
@@ -171,18 +173,18 @@ A dropdown lets users choose which LLM to use per-message. Stored in React state
 
 ### Tasks
 
-- [ ] Create `src/context/AuthContext.js`
-- [ ] Create `src/services/api.js`
-- [ ] Create `src/services/streamChat.js`
-- [ ] Create `src/components/chat/ChatPage.js`
-- [ ] Create `src/components/chat/ChatSidebar.js`
-- [ ] Create `src/components/chat/MessageList.js`
-- [ ] Create `src/components/chat/MessageBubble.js`
-- [ ] Create `src/components/chat/MessageContent.js`
-- [ ] Create `src/components/chat/ChatInput.js`
-- [ ] Update `src/App.js` — use AuthContext, fix protected routes
-- [ ] Update `src/components/LoginPage.js` — use api.js instead of hardcoded URLs
-- [ ] Update `codethium-ai-web/package.json` — remove passport × 4, add `react-markdown`, `react-syntax-highlighter`, `remark-gfm`
+- [x] Create `src/context/AuthContext.js`
+- [x] Create `src/services/api.js`
+- [x] Create `src/services/streamChat.js`
+- [x] Create `src/components/chat/ChatPage.js`
+- [x] Create `src/components/chat/ChatSidebar.js`
+- [x] Create `src/components/chat/MessageList.js`
+- [x] Create `src/components/chat/MessageBubble.js`
+- [x] Create `src/components/chat/MessageContent.js`
+- [x] Create `src/components/chat/ChatInput.js`
+- [x] Update `src/App.js` — use AuthContext, fix protected routes
+- [x] Update `src/components/LoginPage.js` — use api.js instead of hardcoded URLs
+- [x] Update `codethium-ai-web/package.json` — remove passport × 4, add `react-markdown`, `react-syntax-highlighter`, `remark-gfm`
 
 ### Bugs Fixed in This Phase
 
@@ -207,10 +209,10 @@ A dropdown lets users choose which LLM to use per-message. Stored in React state
 |------|--------|
 | `codethium-ai-web/server/Dockerfile` | ✅ Done |
 | `codethium-ai-web/Dockerfile` | ✅ Done (multi-stage nginx) |
-| `docker-compose.yml` | ✅ Done (postgres + server + frontend) |
-| `codethium-model/Dockerfile` | 🔲 Pending (Phase 2) |
-| `codethium-model/requirements-inference.txt` | 🔲 Pending (Phase 2) |
-| `docker-compose.yml` — `local-model` service | 🔲 Pending (Phase 2) |
+| `docker-compose.yml` | ✅ Done (postgres + server + frontend + local-model) |
+| `codethium-model/Dockerfile` | ✅ Done |
+| `codethium-model/requirements-inference.txt` | ✅ Done |
+| `docker-compose.yml` — `local-model` service | ✅ Done (with healthcheck) |
 
 ### Security (Pending)
 
