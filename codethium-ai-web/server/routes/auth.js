@@ -5,10 +5,12 @@ const { signToken } = require('../utils/token');
 const authMiddleware = require('../middleware/auth');
 const config = require('../config');
 
+const { authLimiter } = require('../middleware/rateLimit');
+
 const router = express.Router();
 
 // POST /api/register
-router.post('/register', async (req, res) => {
+router.post('/register', authLimiter, async (req, res) => {
   const { username, email, password } = req.body;
   if (!username || !email || !password) {
     return res.status(400).json({ error: 'Missing fields' });
@@ -33,7 +35,7 @@ router.post('/register', async (req, res) => {
 });
 
 // POST /api/login
-router.post('/login', async (req, res) => {
+router.post('/login', authLimiter, async (req, res) => {
   const { username, email, password } = req.body;
   if (!password || (!username && !email)) {
     return res.status(400).json({ error: 'Missing username/email or password' });

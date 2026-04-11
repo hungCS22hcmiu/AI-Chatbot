@@ -4,6 +4,8 @@ const pool = require('../db/pool');
 const authMiddleware = require('../middleware/auth');
 const { getProvider } = require('../services/llm');
 
+const { streamLimiter } = require('../middleware/rateLimit');
+
 const router = express.Router();
 
 const streamSchema = z.object({
@@ -13,7 +15,7 @@ const streamSchema = z.object({
 });
 
 // POST /api/chats/stream
-router.post('/stream', authMiddleware, async (req, res) => {
+router.post('/stream', authMiddleware, streamLimiter, async (req, res) => {
   const parsed = streamSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.errors[0].message });

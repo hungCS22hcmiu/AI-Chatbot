@@ -15,7 +15,7 @@ Replace the non-functional custom PyTorch model with real LLM APIs, restructure 
 | Phase 1 — DB + Backend Restructure | ✅ DONE | Modular Express, migrations, clean env config |
 | Phase 2 — Hybrid LLM Integration + Streaming | ✅ DONE | Local model + OpenRouter/Groq providers + SSE endpoint + 429 fallback |
 | Phase 3 — Frontend Overhaul | ✅ DONE | AuthContext, api.js, streamChat.js, split ChatbotPage, model selector |
-| Phase 4 — Docker + Security | 🔲 Partial | Docker ✅ done · local-model ✅ done · rateLimit.js + helmet pending |
+| Phase 4 — Docker + Security | ✅ DONE | Docker, local-model, helmet, rate limiting, .env.example |
 | Phase 5 — File & Image Upload | 🔲 Pending | multer, pdf-parse, multimodal LLM |
 | Phase 6 — Chat UX Polish | 🔲 Pending | Auto-title, rename, date grouping, search |
 | Phase 7 — Production Hardening | 🔲 Pending | RAG, tests, deployment |
@@ -201,7 +201,7 @@ A dropdown lets users choose which LLM to use per-message. Stored in React state
 
 ---
 
-## Phase 4 — Docker + Security 🔲 Partial
+## Phase 4 — Docker + Security ✅ DONE
 
 ### Docker
 
@@ -214,11 +214,11 @@ A dropdown lets users choose which LLM to use per-message. Stored in React state
 | `codethium-model/requirements-inference.txt` | ✅ Done |
 | `docker-compose.yml` — `local-model` service | ✅ Done (with healthcheck) |
 
-### Security (Pending)
+### Security ✅ DONE
 
-- [ ] Create `server/middleware/rateLimit.js` using `express-rate-limit`
-- [ ] Add `helmet` middleware to `server/index.js` for security headers
-- [ ] Create `.env.example` at repo root (no secrets, committed to git)
+- [x] Create `server/middleware/rateLimit.js` using `express-rate-limit`
+- [x] Add `helmet` middleware to `server/index.js` for security headers
+- [x] Create `.env.example` at repo root (no secrets, committed to git)
 
 Rate limits:
 
