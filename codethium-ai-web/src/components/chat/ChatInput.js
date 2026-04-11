@@ -6,10 +6,18 @@ const MODELS = [
   { value: 'local', label: 'CodeThium Local' },
 ];
 
+const MODEL_KEY = 'codethium_default_model';
+
 function ChatInput({ onSend, isStreaming, disabled }) {
   const [content, setContent] = useState('');
-  const [model, setModel] = useState('groq');
+  const [model, setModel] = useState(() => localStorage.getItem(MODEL_KEY) || 'groq');
   const textareaRef = useRef(null);
+
+  const handleModelChange = (e) => {
+    const val = e.target.value;
+    setModel(val);
+    localStorage.setItem(MODEL_KEY, val);
+  };
 
   useEffect(() => {
     const ta = textareaRef.current;
@@ -43,7 +51,7 @@ function ChatInput({ onSend, isStreaming, disabled }) {
     }}>
       <select
         value={model}
-        onChange={(e) => setModel(e.target.value)}
+        onChange={handleModelChange}
         disabled={isStreaming}
         style={{
           background: '#1e1e2e',

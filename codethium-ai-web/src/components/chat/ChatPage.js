@@ -9,6 +9,7 @@ function ChatPage() {
   const [activeChat, setActiveChat] = useState(null);
   const [messages, setMessages] = useState([]);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [onChatTitleChange, setOnChatTitleChange] = useState(null);
 
   const loadChat = async (chat) => {
     setActiveChat(chat);
@@ -25,6 +26,7 @@ function ChatPage() {
   const handleSend = ({ content, model }) => {
     if (!activeChat || isStreaming) return;
 
+    const isFirstMessage = messages.length === 0;
     const userMsg = { role: 'user', content };
     setMessages(prev => [...prev, userMsg]);
     setIsStreaming(true);
@@ -47,6 +49,15 @@ function ChatPage() {
       },
       onDone: () => {
         setIsStreaming(false);
+        if (isFirstMessage && activeChat.title === 'New Chat') {
+          const newTitle = content.replace(/\n/g, ' ').slice(0, 40).trim();
+          api.put(`/api/chats/${activeChat.id}`, { title: newTitle })
+            .then(() => {
+              setActiveChat(prev => ({ ...prev, title: newTitle }));
+              if (onChatTitleChange) onChatTitleChange(activeChat.id, newTitle);
+            })
+            .catch(() => {});
+        }
       },
       onError: (err) => {
         setIsStreaming(false);
@@ -71,6 +82,7 @@ function ChatPage() {
         activeChatId={activeChat?.id}
         onSelectChat={loadChat}
         onNewChat={loadChat}
+        onRegisterTitleChange={(fn) => setOnChatTitleChange(() => fn)}
       />
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>

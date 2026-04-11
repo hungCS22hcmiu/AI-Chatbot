@@ -151,12 +151,19 @@ router.get('/', authMiddleware, async (req, res) => {
 
 // PUT /api/chats/:id
 router.put('/:id', authMiddleware, async (req, res) => {
-  const { messages } = req.body;
+  const { messages, title } = req.body;
+  const fields = [];
+  const values = [];
+  let idx = 1;
+  if (messages !== undefined) { fields.push(`message = $${idx++}`); values.push(JSON.stringify(messages)); }
+  if (title !== undefined) { fields.push(`title = $${idx++}`); values.push(title); }
+  if (fields.length === 0) return res.status(400).json({ error: 'Nothing to update' });
+  fields.push(`updated_at = NOW()`);
+  values.push(req.params.id, req.userId);
   try {
     const result = await pool.query(
-      `UPDATE chats SET message = $1, updated_at = NOW()
-       WHERE id = $2 AND user_id = $3 RETURNING *`,
-      [JSON.stringify(messages), req.params.id, req.userId]
+      `UPDATE chats SET ${fields.join(', ')} WHERE id = $${idx} AND user_id = $${idx + 1} RETURNING *`,
+      values
     );
     return res.json({ chat: result.rows[0] });
   } catch (err) {
