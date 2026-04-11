@@ -97,13 +97,16 @@ server/
   routes/
     auth.js              — /api/register, /login, /logout, /me, /change-password
     chat.js              — CRUD /api/chats + POST /api/chats/stream (SSE) + GET /:id/messages
-  services/llm/
-    BaseLLMProvider.js   — abstract base class
-    OpenAICompatibleProvider.js — shared OpenAI-format fetch + SSE parsing
-    OpenRouterProvider.js — openrouter.ai/api/v1 (default: gemma-3-27b-it:free)
-    GroqProvider.js      — api.groq.com/openai/v1 (default: llama-3.3-70b-versatile)
-    LocalModelProvider.js — FastAPI /chat endpoint
-    index.js             — factory: getProvider("openrouter"|"groq"|"local")
+    upload.js            — POST /api/upload/image (→ base64 data URL), /api/upload/file (→ extracted text)
+  services/
+    fileParser.js        — PDF text extraction (pdf-parse) + UTF-8 text files, 8000 char limit
+    llm/
+      BaseLLMProvider.js   — abstract base class
+      OpenAICompatibleProvider.js — shared OpenAI-format fetch + SSE parsing; _readSSEStream()
+      OpenRouterProvider.js — openrouter.ai/api/v1; chatStreamMultimodal() for vision (Llama 3.2 Vision)
+      GroqProvider.js      — api.groq.com/openai/v1 (default: llama-3.3-70b-versatile)
+      LocalModelProvider.js — FastAPI /chat endpoint
+      index.js             — factory: getProvider("openrouter"|"groq"|"local")
   utils/token.js         — signToken helper
 ```
 
@@ -117,9 +120,11 @@ src/
     ChatPage.js                    — top-level composition
     ChatSidebar.js                 — chat history list, new/delete
     MessageList.js                 — scrollable area, auto-scroll
-    MessageBubble.js               — user vs assistant styling
+    MessageBubble.js               — user vs assistant styling; renders attachment thumbnails
     MessageContent.js              — react-markdown + syntax highlighting
-    ChatInput.js                   — textarea, model selector, send button
+    ChatInput.js                   — textarea, model selector, send button, file upload
+    FileUploadButton.js            — image (🖼) and file (📄) upload buttons; native fetch + FormData
+    ImagePreview.js                — attachment thumbnail strip with remove buttons
 ```
 
 ### Database Schema
@@ -129,6 +134,16 @@ src/
 -- messages: id, chat_id (FK), role ('user'|'assistant'|'system'), content, metadata JSONB, created_at
 -- schema_migrations: filename, applied_at
 ```
+
+### File & Image Upload (Phase 5)
+
+Two-step flow: files uploaded first via `POST /api/upload/*`, payload returned to client, then included in the stream request body.
+
+- **Images** → base64 data URL → sent to `OpenRouterProvider.chatStreamMultimodal()` using `meta-llama/llama-3.2-11b-vision-instruct:free`
+- **Files** (PDF, code, text) → extracted text (pdf-parse / UTF-8) → injected as context prefix before the user's question in `POST /api/chats/stream`
+- Only `{type, name}` written to `messages.metadata` — the base64 payload is never stored in the DB
+- `express.json()` body limit is `10mb` to accommodate base64 payloads
+- multer: `memoryStorage`, 5MB file size cap, scoped error handler in `upload.js`
 
 ### LLM Streaming (SSE)
 ```
@@ -149,7 +164,7 @@ Automatic 429 fallback: OpenRouter ↔ Groq.
 | Phase 2 — Hybrid LLM Integration + Streaming | ✅ Done | Local model + OpenRouter/Groq providers + SSE endpoint + 429 fallback |
 | Phase 3 — Frontend Overhaul | ✅ Done | AuthContext, api.js, streamChat.js, split ChatbotPage, model selector |
 | Phase 4 — Docker + Security | ✅ Done | Docker, local-model, helmet, rate limiting, .env.example |
-| Phase 5 — File & Image Upload | 🔲 Pending | multer, pdf-parse, multimodal LLM, FileUploadButton |
+| Phase 5 — File & Image Upload | ✅ Done | multer, pdf-parse, multimodal LLM, FileUploadButton |
 | Phase 6 — Chat UX Polish | 🔲 Pending | Auto-title, rename, date grouping, search |
 | Phase 7 — Production Hardening | 🔲 Pending | RAG (PostgreSQL FTS), Jest tests, deployment |
 

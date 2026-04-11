@@ -16,7 +16,7 @@ Replace the non-functional custom PyTorch model with real LLM APIs, restructure 
 | Phase 2 — Hybrid LLM Integration + Streaming | ✅ DONE | Local model + OpenRouter/Groq providers + SSE endpoint + 429 fallback |
 | Phase 3 — Frontend Overhaul | ✅ DONE | AuthContext, api.js, streamChat.js, split ChatbotPage, model selector |
 | Phase 4 — Docker + Security | ✅ DONE | Docker, local-model, helmet, rate limiting, .env.example |
-| Phase 5 — File & Image Upload | 🔲 Pending | multer, pdf-parse, multimodal LLM |
+| Phase 5 — File & Image Upload | ✅ DONE | multer, pdf-parse, multimodal LLM |
 | Phase 6 — Chat UX Polish | 🔲 Pending | Auto-title, rename, date grouping, search |
 | Phase 7 — Production Hardening | 🔲 Pending | RAG, tests, deployment |
 
@@ -232,26 +232,38 @@ Rate limits:
 
 ---
 
-## Phase 5 — File & Image Upload 🔲
+## Phase 5 — File & Image Upload ✅ DONE
+
+### What Was Built
+
+| File | Purpose |
+|------|---------|
+| `server/db/migrations/003_attachments.sql` | GIN index on `messages.metadata` for attachment/RAG queries |
+| `server/services/fileParser.js` | PDF text extraction (`pdf-parse`) + UTF-8 text files, truncated to 8000 chars |
+| `server/routes/upload.js` | `POST /api/upload/image` (→ base64 data URL) and `POST /api/upload/file` (→ extracted text); multer memoryStorage, 5MB limit |
+| `server/services/llm/OpenAICompatibleProvider.js` | Extracted `_readSSEStream(res)` generator for reuse by subclasses |
+| `server/services/llm/OpenRouterProvider.js` | Added `chatStreamMultimodal(history, imageDataUrl, userText)` using `meta-llama/llama-3.2-11b-vision-instruct:free` |
+| `src/components/chat/FileUploadButton.js` | Image (🖼) and file (📄) upload buttons; native fetch + FormData with `credentials: include` |
+| `src/components/chat/ImagePreview.js` | Attachment thumbnail strip above input with remove buttons |
+
+**Architecture decisions:**
+- Two-step upload: files uploaded first → payload returned to client → included in stream request body (keeps `/api/chats/stream` as JSON, Zod validation intact)
+- No disk storage: images stored as base64 data URLs, files as extracted text — only `{type, name}` written to DB `metadata` JSONB (no payload in DB)
+- Vision model (OpenRouter only): Groq has no free vision model; local model doesn't support images
+- JSON body limit raised to `10mb` in `server/index.js` to accommodate base64 payloads
 
 ### Tasks
 
-- [ ] Add `multer`, `pdf-parse` to server dependencies
-- [ ] Create `server/routes/upload.js` — `POST /api/upload/image` and `POST /api/upload/file`
-- [ ] Create `server/services/fileParser.js` — PDF/code text extraction
-- [ ] Create `server/db/migrations/003_attachments.sql` — add `attachments` JSONB to messages
-- [ ] Update `server/services/llm/OpenRouterProvider.js` — multimodal message format (base64 images)
-- [ ] Update `server/routes/chat.js` — handle attachments in streaming endpoint
-- [ ] Create `src/components/chat/FileUploadButton.js` — paperclip button + file picker
-- [ ] Create `src/components/chat/ImagePreview.js` — thumbnail previews before send
+- [x] Add `multer`, `pdf-parse` to server dependencies
+- [x] Create `server/routes/upload.js` — `POST /api/upload/image` and `POST /api/upload/file`
+- [x] Create `server/services/fileParser.js` — PDF/code text extraction
+- [x] Create `server/db/migrations/003_attachments.sql` — GIN index on metadata JSONB
+- [x] Update `server/services/llm/OpenRouterProvider.js` — multimodal message format (base64 images)
+- [x] Update `server/routes/chat.js` — handle attachments in streaming endpoint
+- [x] Create `src/components/chat/FileUploadButton.js` — image + file upload buttons
+- [x] Create `src/components/chat/ImagePreview.js` — thumbnail previews before send
 
-### Notes
-
-- Images: convert to base64 for LLM multimodal format (Llama 3.2 Vision via OpenRouter)
-- Files: extracted text injected as LLM context before user's question
-- Store attachment references in message `metadata` JSONB column
-
-**Verification:** Upload a PDF → LLM can answer questions about it. Upload an image → multimodal response.
+**Verification:** Upload a PNG → `POST /api/upload/image` returns base64 data URL. Upload a `.py` file → extracted text returned. Send chat with file attachment → LLM receives file text as context prefix, responds correctly. DB `metadata` stores only `{type, name}`, not the payload.
 
 ---
 
@@ -382,14 +394,39 @@ codethium-ai-web/src/components/LoginPage.js → api.js instead of hardcoded URL
 codethium-ai-web/package.json             → removed passport × 4, added react-markdown, react-syntax-highlighter, remark-gfm
 ```
 
-### To Create in Phase 5–7
+### Created in Phase 5 ✅
 
 ```
 codethium-ai-web/server/
-  services/fileParser.js                   (Phase 5)
+  db/migrations/003_attachments.sql
+  services/fileParser.js
+  routes/upload.js
+
+codethium-ai-web/src/components/chat/
+  FileUploadButton.js
+  ImagePreview.js
+```
+
+### Modified in Phase 5 ✅
+
+```
+codethium-ai-web/server/index.js                        → express.json({ limit: '10mb' }), upload route
+codethium-ai-web/server/package.json                    → added multer, pdf-parse
+codethium-ai-web/server/services/llm/OpenAICompatibleProvider.js → extracted _readSSEStream()
+codethium-ai-web/server/services/llm/OpenRouterProvider.js       → chatStreamMultimodal(), getVisionModelName()
+codethium-ai-web/server/routes/chat.js                  → Zod attachments schema, multimodal branch
+codethium-ai-web/src/services/streamChat.js             → pass attachments in body
+codethium-ai-web/src/components/chat/ChatInput.js       → FileUploadButton, ImagePreview, attachment state
+codethium-ai-web/src/components/chat/ChatPage.js        → pass attachments through handleSend
+codethium-ai-web/src/components/chat/MessageBubble.js   → render image thumbnails + file labels
+codethium-ai-web/src/components/chat/MessageList.js     → pass attachments prop to MessageBubble
+```
+
+### To Create in Phase 6–7
+
+```
+codethium-ai-web/server/
   services/rag.js                          (Phase 7)
-  routes/upload.js                         (Phase 5)
-  db/migrations/003_attachments.sql        (Phase 5)
   db/migrations/004_documents.sql          (Phase 7)
   __tests__/auth.test.js                   (Phase 7)
   __tests__/chat.test.js                   (Phase 7)
@@ -397,8 +434,6 @@ codethium-ai-web/server/
 
 codethium-ai-web/src/
   components/chat/SettingsPanel.js         (Phase 6)
-  components/chat/FileUploadButton.js      (Phase 5)
-  components/chat/ImagePreview.js          (Phase 5)
 ```
 
 ### Note on Custom Model
