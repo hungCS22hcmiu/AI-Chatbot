@@ -58,6 +58,8 @@ OPENROUTER_MODEL=google/gemma-3-27b-it:free
 GROQ_API_KEY=gsk_...
 GROQ_MODEL=llama-3.3-70b-versatile
 LOCAL_MODEL_URL=http://local-model:8000
+GEMINI_API_KEY=your_gemini_api_key
+GEMINI_MODEL=gemini-2.5-flash
 ```
 
 See `.env.example` at repo root for a complete template.
@@ -103,10 +105,11 @@ server/
     llm/
       BaseLLMProvider.js   — abstract base class
       OpenAICompatibleProvider.js — shared OpenAI-format fetch + SSE parsing; _readSSEStream()
-      OpenRouterProvider.js — openrouter.ai/api/v1; chatStreamMultimodal() for vision (Llama 3.2 Vision)
+      OpenRouterProvider.js — openrouter.ai/api/v1 (text only)
       GroqProvider.js      — api.groq.com/openai/v1 (default: llama-3.3-70b-versatile)
       LocalModelProvider.js — FastAPI /chat endpoint
-      index.js             — factory: getProvider("openrouter"|"groq"|"local")
+      GeminiProvider.js    — generativelanguage.googleapis.com OpenAI-compat; chatStreamMultimodal() for images + PDFs
+      index.js             — factory: getProvider("openrouter"|"groq"|"local"|"gemini")
   utils/token.js         — signToken helper
 ```
 
@@ -139,8 +142,9 @@ src/
 
 Two-step flow: files uploaded first via `POST /api/upload/*`, payload returned to client, then included in the stream request body.
 
-- **Images** → base64 data URL → sent to `OpenRouterProvider.chatStreamMultimodal()` using `meta-llama/llama-3.2-11b-vision-instruct:free`
-- **Files** (PDF, code, text) → extracted text (pdf-parse / UTF-8) → injected as context prefix before the user's question in `POST /api/chats/stream`
+- **Images** → base64 data URL → auto-routed to `GeminiProvider.chatStreamMultimodal()` (overrides selected model)
+- **PDFs** → base64 data URL (native PDF) → auto-routed to Gemini for native PDF understanding
+- **Text/code files** → extracted text (UTF-8) → injected as context prefix before the user's question in `POST /api/chats/stream`
 - Only `{type, name}` written to `messages.metadata` — the base64 payload is never stored in the DB
 - `express.json()` body limit is `10mb` to accommodate base64 payloads
 - multer: `memoryStorage`, 5MB file size cap, scoped error handler in `upload.js`
@@ -165,7 +169,9 @@ Automatic 429 fallback: OpenRouter ↔ Groq.
 | Phase 3 — Frontend Overhaul | ✅ Done | AuthContext, api.js, streamChat.js, split ChatbotPage, model selector |
 | Phase 4 — Docker + Security | ✅ Done | Docker, local-model, helmet, rate limiting, .env.example |
 | Phase 5 — File & Image Upload | ✅ Done | multer, pdf-parse, multimodal LLM, FileUploadButton |
-| Phase 6 — Chat UX Polish | 🔲 Pending | Auto-title, rename, date grouping, search |
-| Phase 7 — Production Hardening | 🔲 Pending | RAG (PostgreSQL FTS), Jest tests, deployment |
+| Phase 6 — Chat UX Polish | ✅ Done | Auto-title, rename, date grouping, search |
+| Phase 7 — Gemini Multimodal Provider | ✅ Done | GeminiProvider, image+PDF upload, auto-route to Gemini |
+| Phase 8 — Frontend UI Overhaul | 🔲 Pending | Tailwind + Framer Motion, colorful/dynamic redesign |
+| Phase 9 — Production Hardening | 🔲 Pending | RAG (PostgreSQL FTS), Jest tests, deployment |
 
 See `implementation_plan.md` for detailed task lists and file paths per phase.

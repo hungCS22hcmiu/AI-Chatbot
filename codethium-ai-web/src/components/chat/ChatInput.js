@@ -6,6 +6,7 @@ const MODELS = [
   { value: 'groq', label: 'Llama 3 (Groq)' },
   { value: 'openrouter', label: 'Llama 3 (OpenRouter)' },
   { value: 'local', label: 'CodeThium Local' },
+  { value: 'gemini', label: 'Gemini 2.5 Flash (multimodal)' },
 ];
 
 const MODEL_KEY = 'codethium_default_model';
@@ -16,6 +17,18 @@ function ChatInput({ onSend, isStreaming, disabled }) {
   const [attachments, setAttachments] = useState([]);
   const [uploadError, setUploadError] = useState('');
   const textareaRef = useRef(null);
+
+  // Auto-switch to Gemini when attachments present; restore previous model when cleared
+  const prevModelRef = useRef(model);
+  useEffect(() => {
+    const hasMultimodal = attachments.some(a => a.type === 'image' || a.type === 'pdf');
+    if (hasMultimodal && model !== 'gemini') {
+      prevModelRef.current = model;
+      setModel('gemini');
+    } else if (!hasMultimodal && model === 'gemini' && prevModelRef.current !== 'gemini') {
+      setModel(prevModelRef.current);
+    }
+  }, [attachments]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleModelChange = (e) => {
     const val = e.target.value;
@@ -78,7 +91,8 @@ function ChatInput({ onSend, isStreaming, disabled }) {
         <select
           value={model}
           onChange={handleModelChange}
-          disabled={isStreaming}
+          disabled={isStreaming || attachments.some(a => a.type === 'image' || a.type === 'pdf')}
+          title={attachments.some(a => a.type === 'image' || a.type === 'pdf') ? 'Auto-switched to Gemini for multimodal' : ''}
           style={{
             background: '#1e1e2e',
             color: '#ccc',
@@ -86,7 +100,7 @@ function ChatInput({ onSend, isStreaming, disabled }) {
             borderRadius: '8px',
             padding: '8px',
             fontSize: '13px',
-            cursor: 'pointer',
+            cursor: isStreaming || attachments.some(a => a.type === 'image' || a.type === 'pdf') ? 'not-allowed' : 'pointer',
             flexShrink: 0,
           }}
         >

@@ -17,20 +17,20 @@ Replace the broken vision path with Google Gemini as the default multimodal prov
 
 ### Why Gemini
 - OpenAI-compatible endpoint (`https://generativelanguage.googleapis.com/v1beta/openai/`) → fits existing `OpenAICompatibleProvider` pattern with zero new HTTP machinery.
-- Free tier exists (`gemini-2.0-flash-exp` or `gemini-1.5-flash`) with image + PDF + text support.
+- Free tier exists (`gemini-2.5-flash` or `gemini-1.5-flash`) with image + PDF + text support.
 - Native PDF ingestion means we can send real PDF bytes (data URL) instead of `pdf-parse`'d text, preserving layout and tables for better answers.
 
 ### Backend Changes
 
 | File | Change |
 |------|--------|
-| `codethium-ai-web/server/services/llm/GeminiProvider.js` **(new)** | Extends `OpenAICompatibleProvider`. `baseURL = https://generativelanguage.googleapis.com/v1beta/openai`, `apiKey = config.GEMINI_API_KEY`, `model = config.GEMINI_MODEL` (default `gemini-2.0-flash-exp`). Implements `chatStreamMultimodal(history, attachments, userText)` — builds a `content` array with `{type:'text'}` + `{type:'image_url', image_url:{url: dataUrl}}` parts (Gemini accepts base64 data URLs for both images and PDFs via OpenAI-compat schema). |
+| `codethium-ai-web/server/services/llm/GeminiProvider.js` **(new)** | Extends `OpenAICompatibleProvider`. `baseURL = https://generativelanguage.googleapis.com/v1beta/openai`, `apiKey = config.GEMINI_API_KEY`, `model = config.GEMINI_MODEL` (default `gemini-2.5-flash`). Implements `chatStreamMultimodal(history, attachments, userText)` — builds a `content` array with `{type:'text'}` + `{type:'image_url', image_url:{url: dataUrl}}` parts (Gemini accepts base64 data URLs for both images and PDFs via OpenAI-compat schema). |
 | `codethium-ai-web/server/services/llm/index.js` | Add `case 'gemini': return new GeminiProvider();` to factory. |
-| `codethium-ai-web/server/config/index.js` | Add `GEMINI_API_KEY`, `GEMINI_MODEL` (default `gemini-2.0-flash-exp`). Mark `GEMINI_API_KEY` required only if `LLM_PROVIDER==='gemini'` or attachments enabled — keep fail-fast behavior consistent with existing OpenRouter/Groq pattern. |
+| `codethium-ai-web/server/config/index.js` | Add `GEMINI_API_KEY`, `GEMINI_MODEL` (default `gemini-2.5-flash`). Mark `GEMINI_API_KEY` required only if `LLM_PROVIDER==='gemini'` or attachments enabled — keep fail-fast behavior consistent with existing OpenRouter/Groq pattern. |
 | `codethium-ai-web/server/routes/chat.js` | 1) Zod schema (~line 20): expand `model` enum to `['openrouter','groq','local','gemini']`. 2) Vision branch (~line 85): route any request with image attachments to Gemini automatically (override `requested` to `'gemini'`), instead of requiring `requested==='openrouter'`. 3) For PDF attachments, prefer sending the raw data URL to Gemini instead of `fileParser` extraction; keep `fileParser` fallback for `.txt`/code files and for non-Gemini providers. |
 | `codethium-ai-web/server/routes/upload.js` | `POST /api/upload/file` — when mimetype is `application/pdf`, return `{type:'pdf', payload: <dataUrl>, name}` (new branch) in addition to the existing extracted-text branch. Keep text extraction for code/txt. |
 | `codethium-ai-web/server/services/llm/OpenRouterProvider.js` | Delete `chatStreamMultimodal()` and `VISION_MODEL` constant — dead code once Gemini owns vision. |
-| `.env.example` + `CLAUDE.md` env block | Add `GEMINI_API_KEY=` and `GEMINI_MODEL=gemini-2.0-flash-exp`. |
+| `.env.example` + `CLAUDE.md` env block | Add `GEMINI_API_KEY=` and `GEMINI_MODEL=gemini-2.5-flash`. |
 
 ### Frontend Changes
 

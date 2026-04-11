@@ -24,6 +24,8 @@ const config = {
   GROQ_API_KEY: process.env.GROQ_API_KEY,
   GROQ_MODEL: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
   LOCAL_MODEL_URL: process.env.LOCAL_MODEL_URL || 'http://localhost:8000',
+  GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
+  GEMINI_MODEL: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
 };
 
 module.exports = config;

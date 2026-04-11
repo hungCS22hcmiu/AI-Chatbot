@@ -18,7 +18,7 @@ Replace the non-functional custom PyTorch model with real LLM APIs, restructure 
 | Phase 4 — Docker + Security | ✅ DONE | Docker, local-model, helmet, rate limiting, .env.example |
 | Phase 5 — File & Image Upload | ✅ DONE | multer, pdf-parse, multimodal LLM |
 | Phase 6 — Chat UX Polish | ✅ DONE | Auto-title, rename, date grouping, search |
-| Phase 7 — Gemini Multimodal Provider | 🔲 Pending | Replace broken vision path with Gemini (images + PDFs) — see `refacter.md` |
+| Phase 7 — Gemini Multimodal Provider | ✅ DONE | Replace broken vision path with Gemini (images + PDFs) — see `refacter.md` |
 | Phase 8 — Frontend UI Overhaul | 🔲 Pending | Tailwind + Framer Motion, colorful/dynamic redesign — see `refacter.md` |
 | Phase 9 — Production Hardening | 🔲 Pending | RAG, tests, deployment |
 

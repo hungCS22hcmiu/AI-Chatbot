@@ -24,6 +24,13 @@ router.post('/image', authMiddleware, uploadLimiter, upload.single('file'), asyn
 // POST /api/upload/file
 router.post('/file', authMiddleware, uploadLimiter, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+  // PDFs are sent as raw data URLs to Gemini for native PDF understanding
+  if (req.file.mimetype === 'application/pdf') {
+    const dataUrl = `data:application/pdf;base64,${req.file.buffer.toString('base64')}`;
+    return res.json({ type: 'pdf', payload: dataUrl, name: req.file.originalname });
+  }
+
   try {
     const text = await extractText(req.file.buffer, req.file.mimetype);
     return res.json({ type: 'file', payload: text, name: req.file.originalname });

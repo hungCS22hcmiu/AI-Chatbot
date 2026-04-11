@@ -3,13 +3,14 @@ const { z } = require('zod');
 const pool = require('../db/pool');
 const authMiddleware = require('../middleware/auth');
 const { getProvider } = require('../services/llm');
+const { extractText } = require('../services/fileParser');
 
 const { streamLimiter } = require('../middleware/rateLimit');
 
 const router = express.Router();
 
 const attachmentSchema = z.object({
-  type: z.enum(['image', 'file']),
+  type: z.enum(['image', 'file', 'pdf']),
   payload: z.string().min(1),
   name: z.string().min(1),
 });
@@ -17,7 +18,7 @@ const attachmentSchema = z.object({
 const streamSchema = z.object({
   chatId: z.number().int().positive(),
   content: z.string().min(1),
-  model: z.enum(['openrouter', 'groq', 'local']).optional(),
+  model: z.enum(['openrouter', 'groq', 'local', 'gemini']).optional(),
   attachments: z.array(attachmentSchema).max(5).optional(),
 });
 
@@ -55,9 +56,9 @@ router.post('/stream', authMiddleware, streamLimiter, async (req, res) => {
     );
     const dbMessages = historyResult.rows;
 
-    // Inject file text as context prefix for LLM (not stored in DB)
+    // Inject text-file context as prefix for LLM (not stored in DB)
     const fileAttachments = attachments?.filter(a => a.type === 'file') || [];
-    const imageAttachment = attachments?.find(a => a.type === 'image');
+    const multimodalAttachments = attachments?.filter(a => a.type === 'image' || a.type === 'pdf') || [];
     let userContentForLLM = content;
     if (fileAttachments.length > 0) {
       const fileContext = fileAttachments
@@ -79,18 +80,20 @@ router.post('/stream', authMiddleware, streamLimiter, async (req, res) => {
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders();
 
-    // Try requested provider, fallback on 429
+    // Auto-route image/PDF attachments to Gemini regardless of selected model
+    const isMultimodal = multimodalAttachments.length > 0;
+    const hasImages = multimodalAttachments.some(a => a.type === 'image');
+    const pdfOnly = isMultimodal && !hasImages;
     const FALLBACK = { openrouter: 'groq', groq: 'openrouter' };
-    const requested = model || 'openrouter';
-    const isVision = !!imageAttachment && requested === 'openrouter';
+    const requested = isMultimodal ? 'gemini' : (model || 'openrouter');
     let provider = getProvider(requested);
     let usedProvider = requested;
 
     let fullResponse = '';
     try {
-      if (isVision) {
-        const historyForVision = messagesForLLM.slice(0, -1);
-        for await (const chunk of provider.chatStreamMultimodal(historyForVision, imageAttachment.payload, userContentForLLM)) {
+      if (isMultimodal) {
+        const historyForMultimodal = messagesForLLM.slice(0, -1);
+        for await (const chunk of provider.chatStreamMultimodal(historyForMultimodal, multimodalAttachments, userContentForLLM)) {
           fullResponse += chunk;
           res.write(`event: token\ndata: ${JSON.stringify({ content: chunk })}\n\n`);
         }
@@ -101,7 +104,10 @@ router.post('/stream', authMiddleware, streamLimiter, async (req, res) => {
         }
       }
     } catch (streamErr) {
-      if (streamErr.message.includes('429') && FALLBACK[requested] && !isVision) {
+      const is429 = streamErr.message.includes('429');
+
+      // Non-multimodal 429: existing OpenRouter <-> Groq fallback
+      if (is429 && FALLBACK[requested] && !isMultimodal) {
         const fallbackName = FALLBACK[requested];
         console.log(`Provider ${requested} rate-limited, falling back to ${fallbackName}`);
         res.write(`event: info\ndata: ${JSON.stringify({ message: `${requested} rate-limited, using ${fallbackName}` })}\n\n`);
@@ -112,13 +118,51 @@ router.post('/stream', authMiddleware, streamLimiter, async (req, res) => {
           fullResponse += chunk;
           res.write(`event: token\ndata: ${JSON.stringify({ content: chunk })}\n\n`);
         }
+      }
+      // Multimodal 429 with images: no fallback possible (text LLMs can't see)
+      else if (is429 && isMultimodal && hasImages) {
+        const retryMatch = streamErr.message.match(/retry in ([\d.]+)s/i);
+        const retryHint = retryMatch ? ` Retry in ~${Math.ceil(parseFloat(retryMatch[1]))}s.` : '';
+        const friendly = `Gemini rate limit exceeded.${retryHint} Image requests can't fall back to text-only providers — try again shortly, or set GEMINI_MODEL in your .env to a model with available quota.`;
+        console.log(`Gemini 429 with images — no fallback possible`);
+        res.write(`event: error\ndata: ${JSON.stringify({ error: friendly })}\n\n`);
+        return res.end();
+      }
+      // Multimodal 429 with PDFs only: extract text via pdf-parse, retry with text provider
+      else if (is429 && pdfOnly) {
+        const fallbackName = model || 'openrouter';
+        console.log(`Gemini 429 on PDF-only request — extracting text and retrying with ${fallbackName}`);
+        res.write(`event: info\ndata: ${JSON.stringify({ message: `Gemini rate-limited — extracting PDF text and using ${fallbackName}` })}\n\n`);
+
+        const pdfTexts = await Promise.all(
+          multimodalAttachments.map(async (a) => {
+            const b64 = a.payload.split(',')[1] || '';
+            const buf = Buffer.from(b64, 'base64');
+            const text = await extractText(buf, 'application/pdf');
+            return `[File: ${a.name}]\n${text}`;
+          })
+        );
+        const augmentedUserContent = `${pdfTexts.join('\n\n---\n\n')}\n\n---\n\nUser question: ${content}`;
+        const rebuiltMessages = messagesForLLM.map((msg, i) =>
+          i === messagesForLLM.length - 1 && msg.role === 'user'
+            ? { ...msg, content: augmentedUserContent }
+            : msg
+        );
+
+        provider = getProvider(fallbackName);
+        usedProvider = fallbackName;
+        fullResponse = '';
+        for await (const chunk of provider.chatStream(rebuiltMessages)) {
+          fullResponse += chunk;
+          res.write(`event: token\ndata: ${JSON.stringify({ content: chunk })}\n\n`);
+        }
       } else {
         throw streamErr;
       }
     }
 
     // Save assistant message
-    const modelName = isVision ? provider.getVisionModelName() : provider.getModelName();
+    const modelName = provider.getModelName();
     const saved = await pool.query(
       `INSERT INTO messages (chat_id, role, content, metadata)
        VALUES ($1, 'assistant', $2, $3) RETURNING id`,
