@@ -1,0 +1,21 @@
+graph TD
+    Browser["🌐 Browser\nReact 19"]
+
+    subgraph Docker["Docker Compose"]
+        Frontend["Frontend\nnginx : 3000\nReact static files"]
+        Server["Express Server\nNode.js : 4000\nAuth · Chat CRUD · SSE Streaming"]
+        LocalModel["Local AI Model\nFastAPI + PyTorch : 8000\n2.6M param Transformer\nPython code generation"]
+        DB["PostgreSQL : 5433\nusers · chats · messages"]
+    end
+
+    subgraph ExternalAPIs["External LLM APIs"]
+        OpenRouter["OpenRouter\nLlama 3 · Mistral · Gemma\n(free tier)"]
+        Groq["Groq\nLlama 3 fast inference\n(free tier)"]
+    end
+
+    Browser <-->|"HTTP / SSE"| Frontend
+    Frontend <-->|"REST + SSE streaming"| Server
+    Server <-->|"SQL"| DB
+    Server <-->|"POST /chat"| LocalModel
+    Server <-->|"OpenAI-compatible API"| OpenRouter
+    Server <-->|"OpenAI-compatible API"| Groq

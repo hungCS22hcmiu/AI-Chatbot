@@ -58,6 +58,8 @@ OPENROUTER_MODEL=google/gemma-3-27b-it:free
 GROQ_API_KEY=gsk_...
 GROQ_MODEL=llama-3.3-70b-versatile
 LOCAL_MODEL_URL=http://local-model:8000
+GEMINI_API_KEY=your_gemini_api_key
+GEMINI_MODEL=gemini-2.5-flash
 ```
 
 See `.env.example` at repo root for a complete template.
@@ -97,13 +99,17 @@ server/
   routes/
     auth.js              — /api/register, /login, /logout, /me, /change-password
     chat.js              — CRUD /api/chats + POST /api/chats/stream (SSE) + GET /:id/messages
-  services/llm/
-    BaseLLMProvider.js   — abstract base class
-    OpenAICompatibleProvider.js — shared OpenAI-format fetch + SSE parsing
-    OpenRouterProvider.js — openrouter.ai/api/v1 (default: gemma-3-27b-it:free)
-    GroqProvider.js      — api.groq.com/openai/v1 (default: llama-3.3-70b-versatile)
-    LocalModelProvider.js — FastAPI /chat endpoint
-    index.js             — factory: getProvider("openrouter"|"groq"|"local")
+    upload.js            — POST /api/upload/image (→ base64 data URL), /api/upload/file (→ extracted text)
+  services/
+    fileParser.js        — PDF text extraction (pdf-parse) + UTF-8 text files, 8000 char limit
+    llm/
+      BaseLLMProvider.js   — abstract base class
+      OpenAICompatibleProvider.js — shared OpenAI-format fetch + SSE parsing; _readSSEStream()
+      OpenRouterProvider.js — openrouter.ai/api/v1 (text only)
+      GroqProvider.js      — api.groq.com/openai/v1 (default: llama-3.3-70b-versatile)
+      LocalModelProvider.js — FastAPI /chat endpoint
+      GeminiProvider.js    — generativelanguage.googleapis.com OpenAI-compat; chatStreamMultimodal() for images + PDFs
+      index.js             — factory: getProvider("openrouter"|"groq"|"local"|"gemini")
   utils/token.js         — signToken helper
 ```
 
@@ -117,9 +123,11 @@ src/
     ChatPage.js                    — top-level composition
     ChatSidebar.js                 — chat history list, new/delete
     MessageList.js                 — scrollable area, auto-scroll
-    MessageBubble.js               — user vs assistant styling
+    MessageBubble.js               — user vs assistant styling; renders attachment thumbnails
     MessageContent.js              — react-markdown + syntax highlighting
-    ChatInput.js                   — textarea, model selector, send button
+    ChatInput.js                   — textarea, model selector, send button, file upload
+    FileUploadButton.js            — image (🖼) and file (📄) upload buttons; native fetch + FormData
+    ImagePreview.js                — attachment thumbnail strip with remove buttons
 ```
 
 ### Database Schema
@@ -129,6 +137,17 @@ src/
 -- messages: id, chat_id (FK), role ('user'|'assistant'|'system'), content, metadata JSONB, created_at
 -- schema_migrations: filename, applied_at
 ```
+
+### File & Image Upload (Phase 5)
+
+Two-step flow: files uploaded first via `POST /api/upload/*`, payload returned to client, then included in the stream request body.
+
+- **Images** → base64 data URL → auto-routed to `GeminiProvider.chatStreamMultimodal()` (overrides selected model)
+- **PDFs** → base64 data URL (native PDF) → auto-routed to Gemini for native PDF understanding
+- **Text/code files** → extracted text (UTF-8) → injected as context prefix before the user's question in `POST /api/chats/stream`
+- Only `{type, name}` written to `messages.metadata` — the base64 payload is never stored in the DB
+- `express.json()` body limit is `10mb` to accommodate base64 payloads
+- multer: `memoryStorage`, 5MB file size cap, scoped error handler in `upload.js`
 
 ### LLM Streaming (SSE)
 ```
@@ -149,8 +168,10 @@ Automatic 429 fallback: OpenRouter ↔ Groq.
 | Phase 2 — Hybrid LLM Integration + Streaming | ✅ Done | Local model + OpenRouter/Groq providers + SSE endpoint + 429 fallback |
 | Phase 3 — Frontend Overhaul | ✅ Done | AuthContext, api.js, streamChat.js, split ChatbotPage, model selector |
 | Phase 4 — Docker + Security | ✅ Done | Docker, local-model, helmet, rate limiting, .env.example |
-| Phase 5 — File & Image Upload | 🔲 Pending | multer, pdf-parse, multimodal LLM, FileUploadButton |
-| Phase 6 — Chat UX Polish | 🔲 Pending | Auto-title, rename, date grouping, search |
-| Phase 7 — Production Hardening | 🔲 Pending | RAG (PostgreSQL FTS), Jest tests, deployment |
+| Phase 5 — File & Image Upload | ✅ Done | multer, pdf-parse, multimodal LLM, FileUploadButton |
+| Phase 6 — Chat UX Polish | ✅ Done | Auto-title, rename, date grouping, search |
+| Phase 7 — Gemini Multimodal Provider | ✅ Done | GeminiProvider, image+PDF upload, auto-route to Gemini |
+| Phase 8 — Frontend UI Overhaul | 🔲 Pending | Tailwind + Framer Motion, colorful/dynamic redesign |
+| Phase 9 — Production Hardening | 🔲 Pending | RAG (PostgreSQL FTS), Jest tests, deployment |
 
 See `implementation_plan.md` for detailed task lists and file paths per phase.
