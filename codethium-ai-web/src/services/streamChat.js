@@ -11,7 +11,7 @@ const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:4000';
  * @param {function} opts.onError - called with error message string
  * @returns {AbortController} - call .abort() to cancel
  */
-export function streamChat({ chatId, content, model, onToken, onDone, onError }) {
+export function streamChat({ chatId, content, model, attachments, onToken, onDone, onError }) {
   const controller = new AbortController();
 
   (async () => {
@@ -20,7 +20,7 @@ export function streamChat({ chatId, content, model, onToken, onDone, onError })
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ chatId, content, model }),
+        body: JSON.stringify({ chatId, content, model, attachments }),
         signal: controller.signal,
       });
 

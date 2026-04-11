@@ -23,11 +23,11 @@ function ChatPage() {
     }
   };
 
-  const handleSend = ({ content, model }) => {
+  const handleSend = ({ content, model, attachments }) => {
     if (!activeChat || isStreaming) return;
 
     const isFirstMessage = messages.length === 0;
-    const userMsg = { role: 'user', content };
+    const userMsg = { role: 'user', content, attachments };
     setMessages(prev => [...prev, userMsg]);
     setIsStreaming(true);
 
@@ -39,6 +39,7 @@ function ChatPage() {
       chatId: activeChat.id,
       content,
       model,
+      attachments,
       onToken: (chunk) => {
         assistantContent += chunk;
         setMessages(prev => {

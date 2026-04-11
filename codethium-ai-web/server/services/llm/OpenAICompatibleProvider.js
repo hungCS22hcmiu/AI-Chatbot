@@ -45,7 +45,10 @@ class OpenAICompatibleProvider extends BaseLLMProvider {
       const text = await res.text();
       throw new Error(`LLM API error ${res.status}: ${text}`);
     }
+    yield* this._readSSEStream(res);
+  }
 
+  async *_readSSEStream(res) {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';

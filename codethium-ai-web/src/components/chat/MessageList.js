@@ -31,7 +31,7 @@ function MessageList({ messages, isStreaming }) {
       padding: '16px',
     }}>
       {messages.map((msg, i) => (
-        <MessageBubble key={i} role={msg.role} content={msg.content} />
+        <MessageBubble key={i} role={msg.role} content={msg.content} attachments={msg.attachments} />
       ))}
       {isStreaming && messages[messages.length - 1]?.role !== 'assistant' && (
         <TypingIndicator />
