@@ -20,7 +20,10 @@ const config = {
   JWT_SECRET: process.env.JWT_SECRET,
   LLM_PROVIDER: process.env.LLM_PROVIDER || 'openrouter',
   OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+  OPENROUTER_MODEL: process.env.OPENROUTER_MODEL || 'google/gemma-3-27b-it:free',
   GROQ_API_KEY: process.env.GROQ_API_KEY,
+  GROQ_MODEL: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+  LOCAL_MODEL_URL: process.env.LOCAL_MODEL_URL || 'http://localhost:8000',
 };
 
 module.exports = config;

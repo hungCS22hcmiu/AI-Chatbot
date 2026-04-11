@@ -13,9 +13,9 @@ Replace the non-functional custom PyTorch model with real LLM APIs, restructure 
 | Phase | Status | Scope |
 |-------|--------|-------|
 | Phase 1 — DB + Backend Restructure | ✅ DONE | Modular Express, migrations, clean env config |
-| Phase 2 — Hybrid LLM Integration + Streaming | 🔲 Pending | Fix local model + external API providers + SSE endpoint |
-| Phase 3 — Frontend Overhaul | 🔲 Pending | AuthContext, api.js, streamChat.js, split ChatbotPage, model selector |
-| Phase 4 — Docker + Security | 🔲 Partial | Docker ✅ done · local-model service + rateLimit.js + helmet pending |
+| Phase 2 — Hybrid LLM Integration + Streaming | ✅ DONE | Local model + OpenRouter/Groq providers + SSE endpoint + 429 fallback |
+| Phase 3 — Frontend Overhaul | ✅ DONE | AuthContext, api.js, streamChat.js, split ChatbotPage, model selector |
+| Phase 4 — Docker + Security | ✅ DONE | Docker, local-model, helmet, rate limiting, .env.example |
 | Phase 5 — File & Image Upload | 🔲 Pending | multer, pdf-parse, multimodal LLM |
 | Phase 6 — Chat UX Polish | 🔲 Pending | Auto-title, rename, date grouping, search |
 | Phase 7 — Production Hardening | 🔲 Pending | RAG, tests, deployment |
@@ -42,11 +42,11 @@ Replace the non-functional custom PyTorch model with real LLM APIs, restructure 
 
 **Package changes applied:** Removed `passport × 4`, added `zod`, `morgan`.
 
-**Note:** `codethium-ai-web/package.json` still has 4 passport packages — remove before Phase 3.
+**Note:** Passport packages were removed in Phase 3.
 
 ---
 
-## Phase 2 — Hybrid LLM Integration + Streaming 🔲
+## Phase 2 — Hybrid LLM Integration + Streaming ✅ DONE
 
 ### Strategy
 
@@ -67,7 +67,7 @@ Keep the custom-trained local model (2.6M param transformer, Python code generat
 - [x] Add `LOCAL_MODEL_URL: http://local-model:8000` to server service env in docker-compose
 - [x] Add `local-model` to server's `depends_on`
 
-### Step 2c — Provider Abstraction
+### Step 2c — Provider Abstraction ✅ DONE
 
 ```
 server/services/llm/
@@ -79,18 +79,20 @@ server/services/llm/
   index.js                      — factory: getProvider("openrouter"|"groq"|"local")
 ```
 
-- [ ] Create `server/services/llm/BaseLLMProvider.js`
-- [ ] Create `server/services/llm/OpenAICompatibleProvider.js`
-- [ ] Create `server/services/llm/OpenRouterProvider.js`
-- [ ] Create `server/services/llm/GroqProvider.js`
-- [ ] Create `server/services/llm/LocalModelProvider.js`
-- [ ] Create `server/services/llm/index.js` — provider factory
-- [ ] Update `server/config/index.js` — add `LOCAL_MODEL_URL`, `OPENROUTER_MODEL`, `GROQ_MODEL`
+- [x] Create `server/services/llm/BaseLLMProvider.js`
+- [x] Create `server/services/llm/OpenAICompatibleProvider.js`
+- [x] Create `server/services/llm/OpenRouterProvider.js`
+- [x] Create `server/services/llm/GroqProvider.js`
+- [x] Create `server/services/llm/LocalModelProvider.js`
+- [x] Create `server/services/llm/index.js` — provider factory
+- [x] Update `server/config/index.js` — add `LOCAL_MODEL_URL`, `OPENROUTER_MODEL`, `GROQ_MODEL`
 
-### Step 2d — SSE Streaming Endpoint
+### Step 2d — SSE Streaming Endpoint ✅ DONE
 
-- [ ] Add `POST /api/chat/stream` to `server/routes/chat.js`
-- [ ] Update `server/routes/chat.js` to store messages in the `messages` table (not JSON blob)
+- [x] Add `POST /api/chats/stream` to `server/routes/chat.js`
+- [x] Update `server/routes/chat.js` to store messages in the `messages` table (not JSON blob)
+- [x] Add automatic 429 fallback (OpenRouter → Groq, Groq → OpenRouter)
+- [x] Add `GET /api/chats/:id/messages` endpoint for loading chat history
 
 `POST /api/chat/stream` body: `{ chatId, content, model? }` where model is `"openrouter"` | `"groq"` | `"local"`:
 
@@ -134,7 +136,7 @@ curl -N -X POST http://localhost:4000/api/chat/stream \
 
 ---
 
-## Phase 3 — Frontend Overhaul 🔲
+## Phase 3 — Frontend Overhaul ✅ DONE
 
 ### Auth Persistence Fix
 
@@ -171,18 +173,18 @@ A dropdown lets users choose which LLM to use per-message. Stored in React state
 
 ### Tasks
 
-- [ ] Create `src/context/AuthContext.js`
-- [ ] Create `src/services/api.js`
-- [ ] Create `src/services/streamChat.js`
-- [ ] Create `src/components/chat/ChatPage.js`
-- [ ] Create `src/components/chat/ChatSidebar.js`
-- [ ] Create `src/components/chat/MessageList.js`
-- [ ] Create `src/components/chat/MessageBubble.js`
-- [ ] Create `src/components/chat/MessageContent.js`
-- [ ] Create `src/components/chat/ChatInput.js`
-- [ ] Update `src/App.js` — use AuthContext, fix protected routes
-- [ ] Update `src/components/LoginPage.js` — use api.js instead of hardcoded URLs
-- [ ] Update `codethium-ai-web/package.json` — remove passport × 4, add `react-markdown`, `react-syntax-highlighter`, `remark-gfm`
+- [x] Create `src/context/AuthContext.js`
+- [x] Create `src/services/api.js`
+- [x] Create `src/services/streamChat.js`
+- [x] Create `src/components/chat/ChatPage.js`
+- [x] Create `src/components/chat/ChatSidebar.js`
+- [x] Create `src/components/chat/MessageList.js`
+- [x] Create `src/components/chat/MessageBubble.js`
+- [x] Create `src/components/chat/MessageContent.js`
+- [x] Create `src/components/chat/ChatInput.js`
+- [x] Update `src/App.js` — use AuthContext, fix protected routes
+- [x] Update `src/components/LoginPage.js` — use api.js instead of hardcoded URLs
+- [x] Update `codethium-ai-web/package.json` — remove passport × 4, add `react-markdown`, `react-syntax-highlighter`, `remark-gfm`
 
 ### Bugs Fixed in This Phase
 
@@ -199,7 +201,7 @@ A dropdown lets users choose which LLM to use per-message. Stored in React state
 
 ---
 
-## Phase 4 — Docker + Security 🔲 Partial
+## Phase 4 — Docker + Security ✅ DONE
 
 ### Docker
 
@@ -207,24 +209,24 @@ A dropdown lets users choose which LLM to use per-message. Stored in React state
 |------|--------|
 | `codethium-ai-web/server/Dockerfile` | ✅ Done |
 | `codethium-ai-web/Dockerfile` | ✅ Done (multi-stage nginx) |
-| `docker-compose.yml` | ✅ Done (postgres + server + frontend) |
-| `codethium-model/Dockerfile` | 🔲 Pending (Phase 2) |
-| `codethium-model/requirements-inference.txt` | 🔲 Pending (Phase 2) |
-| `docker-compose.yml` — `local-model` service | 🔲 Pending (Phase 2) |
+| `docker-compose.yml` | ✅ Done (postgres + server + frontend + local-model) |
+| `codethium-model/Dockerfile` | ✅ Done |
+| `codethium-model/requirements-inference.txt` | ✅ Done |
+| `docker-compose.yml` — `local-model` service | ✅ Done (with healthcheck) |
 
-### Security (Pending)
+### Security ✅ DONE
 
-- [ ] Create `server/middleware/rateLimit.js` using `express-rate-limit`
-- [ ] Add `helmet` middleware to `server/index.js` for security headers
-- [ ] Create `.env.example` at repo root (no secrets, committed to git)
+- [x] Create `server/middleware/rateLimit.js` using `express-rate-limit`
+- [x] Add `helmet` middleware to `server/index.js` for security headers
+- [x] Create `.env.example` at repo root (no secrets, committed to git)
 
 Rate limits:
 
 | Endpoint | Limit |
 |----------|-------|
-| `/api/login`, `/api/register` | 5 req/min per IP |
-| `/api/chat/stream` | 20 req/min per user |
-| `/api/upload/*` | 10 req/min per user |
+| `/api/login`, `/api/register` | 15 req/min per IP |
+| `/api/chats/stream` | 60 req/min per user |
+| `/api/upload/*` | 30 req/min per user |
 
 **Verification:** `docker-compose up` → DB starts, migrations run automatically, server and frontend start. Can register/login/chat from browser at `http://localhost:3000`.
 
@@ -326,21 +328,64 @@ codethium-ai-web/
 docker-compose.yml             (repo root)
 ```
 
-### To Create in Phase 2–7
+### Created in Phase 2 ✅
 
 ```
 codethium-model/
-  Dockerfile                               (Phase 2)
-  requirements-inference.txt              (Phase 2)
+  Dockerfile
+  requirements-inference.txt
 
 codethium-ai-web/server/
-  middleware/rateLimit.js                  (Phase 4)
-  services/llm/BaseLLMProvider.js          (Phase 2)
-  services/llm/OpenAICompatibleProvider.js (Phase 2)
-  services/llm/OpenRouterProvider.js       (Phase 2)
-  services/llm/GroqProvider.js             (Phase 2)
-  services/llm/LocalModelProvider.js       (Phase 2)
-  services/llm/index.js                    (Phase 2)
+  services/llm/BaseLLMProvider.js
+  services/llm/OpenAICompatibleProvider.js
+  services/llm/OpenRouterProvider.js
+  services/llm/GroqProvider.js
+  services/llm/LocalModelProvider.js
+  services/llm/index.js
+```
+
+### Created in Phase 3 ✅
+
+```
+codethium-ai-web/src/
+  context/AuthContext.js
+  services/api.js
+  services/streamChat.js
+  components/chat/ChatPage.js
+  components/chat/ChatSidebar.js
+  components/chat/MessageList.js
+  components/chat/MessageBubble.js
+  components/chat/MessageContent.js
+  components/chat/ChatInput.js
+```
+
+### Created in Phase 4 ✅
+
+```
+codethium-ai-web/server/middleware/rateLimit.js
+.env.example
+```
+
+### Modified in Phase 1–4 ✅
+
+```
+codethium-ai-web/server/index.js           → slim entry point + helmet
+codethium-ai-web/server/package.json       → removed passport × 4, added zod, morgan, helmet, express-rate-limit
+codethium-model/decoder_only_model.py     → fixed hardcoded paths, added /health, removed reload=True
+codethium-model/model_components.py       → wrapped IPython import in try/except
+codethium-ai-web/server/config/index.js   → added LOCAL_MODEL_URL, OPENROUTER_MODEL, GROQ_MODEL
+codethium-ai-web/server/routes/chat.js    → added POST /api/chats/stream with hybrid provider + rate limit
+codethium-ai-web/server/routes/auth.js    → added authLimiter to login/register
+docker-compose.yml                        → added local-model service with healthcheck
+codethium-ai-web/src/App.js               → AuthContext, ProtectedRoute
+codethium-ai-web/src/components/LoginPage.js → api.js instead of hardcoded URLs
+codethium-ai-web/package.json             → removed passport × 4, added react-markdown, react-syntax-highlighter, remark-gfm
+```
+
+### To Create in Phase 5–7
+
+```
+codethium-ai-web/server/
   services/fileParser.js                   (Phase 5)
   services/rag.js                          (Phase 7)
   routes/upload.js                         (Phase 5)
@@ -351,41 +396,9 @@ codethium-ai-web/server/
   __tests__/llm.test.js                    (Phase 7)
 
 codethium-ai-web/src/
-  context/AuthContext.js                   (Phase 3)
-  services/api.js                          (Phase 3)
-  services/streamChat.js                   (Phase 3)
-  components/chat/ChatPage.js              (Phase 3)
-  components/chat/ChatSidebar.js           (Phase 3)
-  components/chat/MessageList.js           (Phase 3)
-  components/chat/MessageBubble.js         (Phase 3)
-  components/chat/MessageContent.js        (Phase 3)
-  components/chat/ChatInput.js             (Phase 3)
   components/chat/SettingsPanel.js         (Phase 6)
   components/chat/FileUploadButton.js      (Phase 5)
   components/chat/ImagePreview.js          (Phase 5)
-
-.env.example                               (Phase 4)
-```
-
-### Modified in Phase 1 ✅
-
-```
-codethium-ai-web/server/index.js           → slim entry point (~37 lines)
-codethium-ai-web/server/package.json       → removed passport × 4, added zod + morgan
-```
-
-### To Modify in Phase 2–7
-
-```
-codethium-model/decoder_only_model.py     → fix hardcoded paths, add /health, remove reload=True (Phase 2)
-codethium-model/model_components.py       → wrap IPython import in try/except (Phase 2)
-codethium-ai-web/server/config/index.js   → add LOCAL_MODEL_URL, OPENROUTER_MODEL, GROQ_MODEL (Phase 2)
-codethium-ai-web/server/routes/chat.js    → add POST /api/chat/stream with hybrid provider (Phase 2)
-codethium-ai-web/server/index.js          → add helmet + rateLimit (Phase 4)
-docker-compose.yml                        → add local-model service (Phase 2)
-codethium-ai-web/src/App.js               → add AuthContext (Phase 3)
-codethium-ai-web/src/components/LoginPage.js → use api.js (Phase 3)
-codethium-ai-web/package.json             → remove passport × 4, add markdown libs (Phase 3)
 ```
 
 ### Note on Custom Model
