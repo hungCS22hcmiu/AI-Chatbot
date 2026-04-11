@@ -17,8 +17,10 @@ Replace the non-functional custom PyTorch model with real LLM APIs, restructure 
 | Phase 3 — Frontend Overhaul | ✅ DONE | AuthContext, api.js, streamChat.js, split ChatbotPage, model selector |
 | Phase 4 — Docker + Security | ✅ DONE | Docker, local-model, helmet, rate limiting, .env.example |
 | Phase 5 — File & Image Upload | ✅ DONE | multer, pdf-parse, multimodal LLM |
-| Phase 6 — Chat UX Polish | 🔲 Pending | Auto-title, rename, date grouping, search |
-| Phase 7 — Production Hardening | 🔲 Pending | RAG, tests, deployment |
+| Phase 6 — Chat UX Polish | ✅ DONE | Auto-title, rename, date grouping, search |
+| Phase 7 — Gemini Multimodal Provider | 🔲 Pending | Replace broken vision path with Gemini (images + PDFs) — see `refacter.md` |
+| Phase 8 — Frontend UI Overhaul | 🔲 Pending | Tailwind + Framer Motion, colorful/dynamic redesign — see `refacter.md` |
+| Phase 9 — Production Hardening | 🔲 Pending | RAG, tests, deployment |
 
 ---
 
@@ -281,7 +283,79 @@ Rate limits:
 
 ---
 
-## Phase 7 — Production Hardening 🔲
+## Phase 7 — Gemini Multimodal Provider 🔲
+
+**Problem:** The vision path shipped in Phase 5 targets OpenRouter's `meta-llama/llama-3.2-11b-vision-instruct:free`, but the chat models the user actually runs (`google/gemma-3-27b-it:free` on OpenRouter, `llama-3.3-70b-versatile` on Groq) are text-only. Image and PDF uploads are effectively broken.
+
+**Solution:** Add Google Gemini as a first-class provider via its OpenAI-compatible endpoint. Gemini natively ingests images and PDFs, fits the existing `OpenAICompatibleProvider` pattern, and has a free tier.
+
+### Backend Tasks
+- [ ] Create `server/services/llm/GeminiProvider.js` extending `OpenAICompatibleProvider` (baseURL `https://generativelanguage.googleapis.com/v1beta/openai`, default model `gemini-2.0-flash-exp`)
+- [ ] Implement `chatStreamMultimodal(history, attachments, userText)` — build OpenAI-compat `content` parts array with `image_url` data URLs for both images and PDFs
+- [ ] Add `'gemini'` case to `server/services/llm/index.js` factory
+- [ ] Add `GEMINI_API_KEY`, `GEMINI_MODEL` to `server/config/index.js`
+- [ ] Update `server/routes/chat.js` Zod schema — expand `model` enum to include `'gemini'`
+- [ ] Update vision branch in `server/routes/chat.js` — auto-route image/PDF attachments to Gemini regardless of selected model
+- [ ] Update `server/routes/upload.js` — when file is `application/pdf`, return `{type:'pdf', payload: <dataUrl>, name}` for Gemini passthrough
+- [ ] Remove `chatStreamMultimodal()` + `VISION_MODEL` from `server/services/llm/OpenRouterProvider.js` (dead code)
+- [ ] Update `.env.example` and `CLAUDE.md` env block with `GEMINI_API_KEY` / `GEMINI_MODEL`
+
+### Frontend Tasks
+- [ ] Update `src/components/chat/ChatInput.js` MODELS array → add Gemini; auto-switch + lock selector when attachments present
+- [ ] Update `src/components/chat/FileUploadButton.js` → file input `accept` includes `application/pdf`
+
+### Verification
+- Text chat with `gemini` selected streams tokens
+- Image upload → Gemini describes it
+- Multi-page PDF upload → Gemini answers page-specific questions (proves native PDF, not extracted text)
+- OpenRouter + Groq still work for text-only chats
+- `messages.metadata` still stores only `{type, name}`
+
+See `refacter.md` for the full rationale and file-by-file breakdown.
+
+---
+
+## Phase 8 — Frontend UI Overhaul 🔲
+
+**Goal:** Replace the current flat cyan-on-black UI (mix of inline styles and a 663-line legacy `ChatbotPage.css`) with a colorful, dynamic, animated interface — without rewriting business logic.
+
+**Approach:** Introduce Tailwind CSS + Framer Motion + Lucide icons. Define an expanded design system (violet/pink/amber gradient brand palette, layered surface tones). Migrate components one at a time; extract shared UI primitives (`Button`, `GlassCard`, `Spinner`) under `src/components/ui/`.
+
+### Setup Tasks
+- [ ] `npm install -D tailwindcss@3 postcss autoprefixer` + `npm install framer-motion lucide-react` in `codethium-ai-web/`
+- [ ] `npx tailwindcss init -p` — create `tailwind.config.js` and `postcss.config.js`
+- [ ] Define brand palette + surface tones in `tailwind.config.js`
+- [ ] Add Tailwind directives to `src/index.css`
+
+### Component Refactor Tasks
+- [ ] `src/components/ui/Button.js`, `GlassCard.js`, `Spinner.js` (new primitives)
+- [ ] `ChatPage.js` — Tailwind grid, animated gradient background
+- [ ] `ChatSidebar.js` — glass card, hover lift, Framer Motion layout animations
+- [ ] `MessageList.js` — `AnimatePresence` on messages
+- [ ] `MessageBubble.js` — gradient user bubble, glass assistant bubble, Lucide avatars
+- [ ] `MessageContent.js` — restyle syntax highlighter theme
+- [ ] `ChatInput.js` — pill textarea, gradient send button, styled model popover
+- [ ] `FileUploadButton.js` — Lucide icons + tooltips
+- [ ] `ImagePreview.js` — spring animations
+- [ ] `SettingsPanel.js` — modal with backdrop blur
+- [ ] `LoginPage.js` — split-screen with animated gradient blob
+
+### Cleanup Tasks
+- [ ] Delete `src/components/ChatbotPage.js` and `ChatbotPage.css`
+- [ ] Delete `src/App.css`
+- [ ] Strip inline style objects from migrated components
+
+### Verification
+- Tailwind compiles cleanly under CRA 5
+- Visual pass: login gradient blob, sidebar glass + hover, message entrance animations, streaming spinner, settings modal
+- Responsive at 1280px and 768px
+- No regressions in send/upload/model-switch/logout flows
+
+See `refacter.md` for the design system tokens and component-by-component visual spec.
+
+---
+
+## Phase 9 — Production Hardening 🔲
 
 ### Security & Reliability
 
