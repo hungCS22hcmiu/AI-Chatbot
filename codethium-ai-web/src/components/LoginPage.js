@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import styles from './LoginPage.module.css';
+import api from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
-function LoginPage({ onLogin }) {
+function LoginPage() {
   const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -10,6 +12,7 @@ function LoginPage({ onLogin }) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const navigate = useNavigate();
+  const { login } = useAuth();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -20,7 +23,6 @@ function LoginPage({ onLogin }) {
     const trimmedPassword = password.trim();
     const trimmedConfirm = confirmPassword.trim();
 
-    // Validation
     if (isLogin) {
       if (!trimmedUsername && !trimmedEmail) return setError('Please provide a username or email');
       if (!trimmedPassword) return setError('Please provide a password');
@@ -31,43 +33,29 @@ function LoginPage({ onLogin }) {
 
     try {
       if (isLogin) {
-        const response = await fetch('http://localhost:4000/api/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ username: trimmedUsername, email: trimmedEmail, password: trimmedPassword }),
+        const { data } = await api.post('/api/login', {
+          username: trimmedUsername,
+          email: trimmedEmail,
+          password: trimmedPassword,
         });
-
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'Login failed');
-        onLogin(data.user || { email: trimmedEmail || trimmedUsername });
+        login(data.user);
         navigate('/chatbot');
       } else {
-        const registerResponse = await fetch('http://localhost:4000/api/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ username: trimmedUsername, email: trimmedEmail, password: trimmedPassword }),
+        await api.post('/api/register', {
+          username: trimmedUsername,
+          email: trimmedEmail,
+          password: trimmedPassword,
         });
-
-        const registerData = await registerResponse.json();
-        if (!registerResponse.ok) throw new Error(registerData.error || 'Registration failed');
-
         // Auto-login after register
-        const loginResponse = await fetch('http://localhost:4000/api/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ email: trimmedEmail, password: trimmedPassword }),
+        const { data } = await api.post('/api/login', {
+          email: trimmedEmail,
+          password: trimmedPassword,
         });
-
-        const loginData = await loginResponse.json();
-        if (!loginResponse.ok) throw new Error(loginData.error || 'Auto-login failed');
-        onLogin(loginData.user || { email: trimmedEmail });
+        login(data.user);
         navigate('/chatbot');
       }
     } catch (err) {
-      setError(err.message);
+      setError(err.response?.data?.error || err.message);
     }
   };
 

@@ -77,6 +77,26 @@ router.post('/stream', authMiddleware, async (req, res) => {
   }
 });
 
+// GET /api/chats/:id/messages
+router.get('/:id/messages', authMiddleware, async (req, res) => {
+  try {
+    const chatCheck = await pool.query(
+      'SELECT id FROM chats WHERE id = $1 AND user_id = $2',
+      [req.params.id, req.userId]
+    );
+    if (chatCheck.rowCount === 0) return res.status(404).json({ error: 'Chat not found' });
+
+    const result = await pool.query(
+      'SELECT role, content, created_at FROM messages WHERE chat_id = $1 ORDER BY created_at ASC',
+      [req.params.id]
+    );
+    return res.json({ messages: result.rows });
+  } catch (err) {
+    console.error('Get messages error:', err);
+    return res.status(500).json({ error: 'Failed to fetch messages' });
+  }
+});
+
 // POST /api/chats
 router.post('/', authMiddleware, async (req, res) => {
   const { title, messages } = req.body;
