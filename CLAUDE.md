@@ -4,13 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-CodeThium is a full-stack AI chatbot. The backend is a modular Express server backed by PostgreSQL. The frontend is a React app served via nginx in Docker. LLM integration (OpenRouter / Groq) and SSE streaming are planned for Phase 2.
+CodeThium is a full-stack AI chatbot with hybrid LLM support (OpenRouter, Groq, custom local model). The backend is a modular Express server backed by PostgreSQL with SSE streaming. The frontend is a React app served via nginx in Docker.
 
 **Services:**
 - **React frontend** (`codethium-ai-web/`) — port 3000
 - **Express backend** (`codethium-ai-web/server/`) — port 4000
 - **PostgreSQL** — port 5433 (Docker service name: `postpres`)
-- ~~FastAPI AI model~~ — removed; LLM calls will be routed through Express (Phase 2)
+- **Local Model** (`codethium-model/`) — FastAPI on port 8000, Python code generation (Docker service: `local-model`)
 
 ## Commands
 
@@ -52,10 +52,15 @@ DB_USER=SE
 DB_PASSWORD=your_db_password
 DB_NAME=codethium
 JWT_SECRET=strong_random_secret_min_32_chars
-LLM_PROVIDER=openrouter          # or: groq  (Phase 2)
-OPENROUTER_API_KEY=sk-or-...     # Phase 2
-GROQ_API_KEY=gsk_...             # Phase 2
+LLM_PROVIDER=openrouter
+OPENROUTER_API_KEY=sk-or-...
+OPENROUTER_MODEL=google/gemma-3-27b-it:free
+GROQ_API_KEY=gsk_...
+GROQ_MODEL=llama-3.3-70b-versatile
+LOCAL_MODEL_URL=http://local-model:8000
 ```
+
+See `.env.example` at repo root for a complete template.
 
 For local frontend dev, create `codethium-ai-web/.env`:
 ```
@@ -66,55 +71,55 @@ REACT_APP_API_URL=http://localhost:4000
 
 ## Architecture
 
-### Current Request Flow (Phase 1 complete)
-1. User logs in via `src/components/LoginPage.js` → `POST /api/login`
-2. Auth state held in `App.js` `useState` (lost on refresh — fixed in Phase 3)
-3. Chat UI in `src/components/ChatbotPage.js` → currently calls dead `localhost:8000` AI endpoint
-4. Chat CRUD: `POST/GET/PUT/DELETE /api/chats` — working, but frontend doesn't wire to DB yet
+### Request Flow
+1. User logs in via `src/components/LoginPage.js` → `POST /api/login` (httpOnly cookie)
+2. Auth state managed by `src/context/AuthContext.js` (rehydrates via `GET /api/me` on refresh)
+3. User sends message in `src/components/chat/ChatPage.js`
+4. `src/services/streamChat.js` POSTs to `POST /api/chats/stream`
+5. Express authenticates, loads history from DB, calls LLM provider (OpenRouter / Groq / Local)
+6. LLM response streams back as SSE (`event: token`), saved to `messages` table on completion
 
-### Target Request Flow (Phase 2 + 3)
-1. User sends message in `src/components/chat/ChatPage.js`
-2. `src/services/streamChat.js` POSTs to `POST /api/chat/stream`
-3. Express authenticates, loads history from DB, calls LLM provider (OpenRouter / Groq)
-4. LLM response streams back as SSE (`event: token`)
-
-### Backend Structure (`codethium-ai-web/server/`) — Phase 1 ✓
+### Backend Structure (`codethium-ai-web/server/`)
 ```
 server/
-  index.js               — slim entry point (~37 lines)
+  index.js               — entry point with helmet, CORS, morgan
   config/index.js        — env validation, fail-fast
   db/
     pool.js              — pg Pool singleton
     migrate.js           — sequential migration runner (idempotent)
     migrations/
       001_initial.sql    — users + chats tables
-      002_messages_table.sql — normalized messages (ready for Phase 2)
+      002_messages_table.sql — normalized messages table
   middleware/
     auth.js              — JWT verify (httpOnly cookie or Bearer header)
     errorHandler.js      — centralized error handler
+    rateLimit.js         — express-rate-limit (auth: 15/min, stream: 60/min, upload: 30/min)
   routes/
     auth.js              — /api/register, /login, /logout, /me, /change-password
-    chat.js              — CRUD /api/chats (GET, POST, PUT /:id, DELETE /:id)
+    chat.js              — CRUD /api/chats + POST /api/chats/stream (SSE) + GET /:id/messages
+  services/llm/
+    BaseLLMProvider.js   — abstract base class
+    OpenAICompatibleProvider.js — shared OpenAI-format fetch + SSE parsing
+    OpenRouterProvider.js — openrouter.ai/api/v1 (default: gemma-3-27b-it:free)
+    GroqProvider.js      — api.groq.com/openai/v1 (default: llama-3.3-70b-versatile)
+    LocalModelProvider.js — FastAPI /chat endpoint
+    index.js             — factory: getProvider("openrouter"|"groq"|"local")
   utils/token.js         — signToken helper
 ```
 
-**Not yet built (Phase 2):**
-```
-server/
-  middleware/rateLimit.js
-  services/llm/
-    BaseLLMProvider.js / OpenRouterProvider.js / GroqProvider.js / index.js
-  routes/chat.js         — add POST /api/chat/stream (SSE streaming)
-```
-
-**Not yet built (Phase 3):**
+### Frontend Structure (`codethium-ai-web/src/`)
 ```
 src/
-  context/AuthContext.js
-  services/api.js / streamChat.js
+  context/AuthContext.js           — user state, login/logout, cookie rehydration
+  services/api.js                  — Axios instance (baseURL from env, withCredentials)
+  services/streamChat.js           — fetch + ReadableStream SSE client
   components/chat/
-    ChatPage.js / ChatSidebar.js / MessageList.js
-    MessageBubble.js / MessageContent.js / ChatInput.js
+    ChatPage.js                    — top-level composition
+    ChatSidebar.js                 — chat history list, new/delete
+    MessageList.js                 — scrollable area, auto-scroll
+    MessageBubble.js               — user vs assistant styling
+    MessageContent.js              — react-markdown + syntax highlighting
+    ChatInput.js                   — textarea, model selector, send button
 ```
 
 ### Database Schema
@@ -125,22 +130,25 @@ src/
 -- schema_migrations: filename, applied_at
 ```
 
-### LLM Streaming (SSE) — Phase 2 target
+### LLM Streaming (SSE)
 ```
 event: token   data: {"content":"Hello"}
-event: done    data: {"messageId":42,"model":"llama-3-8b"}
-event: error   data: {"error":"Rate limit exceeded"}
+event: info    data: {"message":"openrouter rate-limited, using groq"}
+event: done    data: {"messageId":42,"model":"gemma-3-27b-it"}
+event: error   data: {"error":"Streaming failed"}
 ```
 Frontend reads with `fetch` + `response.body.getReader()` (not `EventSource` — POST requires fetch).
+
+Automatic 429 fallback: OpenRouter ↔ Groq.
 
 ## Implementation Roadmap
 
 | Phase | Status | Scope |
 |-------|--------|-------|
 | Phase 1 — DB + Backend Restructure | ✅ Done | Modular Express, migrations, clean env config |
-| Phase 2 — LLM Integration + Streaming | 🔲 Pending | LLM provider abstraction, SSE endpoint, messages table wired |
-| Phase 3 — Frontend Overhaul | 🔲 Pending | AuthContext, api.js, streamChat.js, split ChatbotPage, fix XSS |
-| Phase 4 — Docker + Security | 🔲 Partial | ✅ Docker done · rateLimit.js + helmet pending |
+| Phase 2 — Hybrid LLM Integration + Streaming | ✅ Done | Local model + OpenRouter/Groq providers + SSE endpoint + 429 fallback |
+| Phase 3 — Frontend Overhaul | ✅ Done | AuthContext, api.js, streamChat.js, split ChatbotPage, model selector |
+| Phase 4 — Docker + Security | ✅ Done | Docker, local-model, helmet, rate limiting, .env.example |
 | Phase 5 — File & Image Upload | 🔲 Pending | multer, pdf-parse, multimodal LLM, FileUploadButton |
 | Phase 6 — Chat UX Polish | 🔲 Pending | Auto-title, rename, date grouping, search |
 | Phase 7 — Production Hardening | 🔲 Pending | RAG (PostgreSQL FTS), Jest tests, deployment |
