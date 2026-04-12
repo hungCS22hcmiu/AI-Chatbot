@@ -11,13 +11,16 @@ A full-stack AI chatbot with hybrid LLM support, file/image uploads, RAG via Pos
 
 ## Features
 
-- **Multi-provider LLM** — OpenRouter, Groq, Google Gemini, and a custom-trained local Python code model
+- **Multi-provider LLM** — OpenRouter, Groq, Google Gemini, Gemma 4 31B, and a custom-trained local Python code model
 - **Token streaming** — Server-Sent Events (SSE) with automatic 429 fallback between OpenRouter and Groq
-- **File & image uploads** — Images and PDFs routed to Gemini for native multimodal understanding; text/code files extracted as context
+- **Multimodal input** — Images and PDFs routed to Gemini or Gemma for native multimodal understanding; text/code files extracted as context
 - **RAG** — Uploaded documents stored with PostgreSQL `tsvector` full-text search; relevant excerpts automatically injected as LLM context
+- **Real-time web search** — Automatically searches the web (via Tavily) when queries contain time-sensitive keywords (weather, news, prices, etc.)
+- **Thought-block filtering** — Strips `<thought>…</thought>` reasoning from Gemma responses, showing only the final answer
 - **Auth** — JWT access tokens (15 min) + opaque refresh tokens (7 days, hashed in DB)
 - **Light/dark theme** — persisted to localStorage, toggleable from sidebar
 - **Chat UX** — auto-title, rename, date grouping, sidebar search
+- **Optimized Docker images** — Local model uses ONNX Runtime instead of PyTorch (995 MB → 408 MB)
 
 ---
 
@@ -32,7 +35,9 @@ Express 5 (port 4000)
     │                               ├─ OpenRouter  (google/gemma-3-27b-it:free)
     │                               ├─ Groq        (llama-3.3-70b-versatile)
     │                               ├─ Gemini      (gemini-2.5-flash) — images + PDFs
-    │                               └─ Local Model (FastAPI, port 8000)
+    │                               ├─ Gemma       (gemma-4-31b-it) — multimodal + thought filtering
+    │                               └─ Local Model (FastAPI + ONNX Runtime, port 8000)
+    ├─ POST /api/chats/stream ──► webSearch.js ──► Tavily API (optional)
     ├─ POST /api/upload/*  ──► fileParser.js ──► RAG: documents table
     └─ DB layer (pg Pool) ──► PostgreSQL 16 (port 5433)
 ```
@@ -40,9 +45,10 @@ Express 5 (port 4000)
 **Request flow:**
 1. User sends message → `POST /api/chats/stream`
 2. Express checks RAG: searches `documents` table for relevant chunks via `plainto_tsquery`
-3. Relevant snippets prepended as a system message
-4. LLM streams response back as SSE tokens
-5. Completed response saved to `messages` table
+3. If query contains time-sensitive keywords and `TAVILY_API_KEY` is set → fetches live web results
+4. RAG snippets and/or web results prepended as system messages
+5. LLM streams response back as SSE tokens
+6. Completed response saved to `messages` table
 
 ---
 
@@ -53,7 +59,7 @@ Express 5 (port 4000)
 cp .env.example .env
 
 # 2. Build and start all services
-docker-compose up --build
+docker compose up --build
 
 # 3. Open browser
 open http://localhost:3000
@@ -115,6 +121,8 @@ Single `.env` at repo root. See `.env.example` for the full template.
 | `GROQ_MODEL` | No | Default: `llama-3.3-70b-versatile` |
 | `GEMINI_API_KEY` | No | [Google AI Studio](https://aistudio.google.com) API key — required for image/PDF uploads |
 | `GEMINI_MODEL` | No | Default: `gemini-2.5-flash` |
+| `GEMMA_MODEL` | No | Default: `gemma-4-31b-it` |
+| `TAVILY_API_KEY` | No | [Tavily](https://app.tavily.com) key — enables real-time web search |
 | `LOCAL_MODEL_URL` | No | FastAPI endpoint (default `http://local-model:8000`) |
 
 ---
@@ -165,15 +173,16 @@ AI-Chatbot/
 │   │   ├── middleware/            auth, errorHandler, rateLimit
 │   │   ├── routes/                auth, chat, upload
 │   │   ├── services/
-│   │   │   ├── llm/               OpenRouter, Groq, Gemini, Local providers
+│   │   │   ├── llm/               OpenRouter, Groq, Gemini, Gemma, Local providers
 │   │   │   ├── rag.js             PostgreSQL FTS document storage + search
+│   │   │   ├── webSearch.js       Tavily web search (keyword heuristic trigger)
 │   │   │   └── fileParser.js      PDF + text extraction
 │   │   └── __tests__/             Jest + Supertest (41 tests)
 │   └── src/                       React 19 frontend
 │       ├── context/               AuthContext (+ refresh interceptor), ThemeContext
 │       ├── services/              api.js (Axios), streamChat.js (SSE)
 │       └── components/chat/       ChatPage, Sidebar, MessageList, ChatInput, ...
-├── codethium-model/               FastAPI local model (Python decoder-only transformer)
+├── codethium-model/               FastAPI local model (ONNX Runtime, decoder-only transformer)
 ├── docker-compose.yml
 └── .env.example
 ```

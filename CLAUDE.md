@@ -4,22 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-CodeThium is a full-stack AI chatbot with hybrid LLM support (OpenRouter, Groq, custom local model). The backend is a modular Express server backed by PostgreSQL with SSE streaming. The frontend is a React app served via nginx in Docker.
+CodeThium is a full-stack AI chatbot with hybrid LLM support (OpenRouter, Groq, Gemini, Gemma, custom local model). The backend is a modular Express server backed by PostgreSQL with SSE streaming. The frontend is a React app served via nginx in Docker.
 
 **Services:**
 - **React frontend** (`codethium-ai-web/`) — port 3000
 - **Express backend** (`codethium-ai-web/server/`) — port 4000
 - **PostgreSQL** — port 5433 (Docker service name: `postpres`)
-- **Local Model** (`codethium-model/`) — FastAPI on port 8000, Python code generation (Docker service: `local-model`)
+- **Local Model** (`codethium-model/`) — FastAPI on port 8000, ONNX Runtime inference for Python code generation (Docker service: `local-model`)
 
 ## Commands
 
 ### Docker (recommended)
 ```bash
-docker-compose up --build        # first run: build + migrate + start
-docker-compose up                # subsequent runs
-docker-compose down              # stop, keep DB data
-docker-compose down -v           # stop + wipe DB volume
+docker compose up --build        # first run: build + migrate + start
+docker compose up                # subsequent runs
+docker compose down              # stop, keep DB data
+docker compose down -v           # stop + wipe DB volume
 ```
 
 ### Backend (local dev)
@@ -215,5 +215,6 @@ Automatic 429 fallback: OpenRouter ↔ Groq.
 | Phase 8 — Frontend UI Overhaul | ✅ Done | Tailwind + Framer Motion, light/dark theme, local model formatting |
 | Phase 9 — Production Hardening | ✅ Done | CORS from env, password strength (12+ chars), JWT refresh tokens, RAG (PostgreSQL FTS), Jest tests (41 tests) |
 | Phase 10 — Gemma + Web Search | ✅ Done | Gemma 4 31B provider, thought-block filtering, Tavily web search with keyword heuristic |
+| Phase 11 — Docker Optimization | ✅ Done | Local model: PyTorch→ONNX Runtime (995 MB→408 MB); .dockerignore for model artifacts |
 
 See `implementation_plan.md` for detailed task lists and file paths per phase.
