@@ -26,6 +26,9 @@ const config = {
   LOCAL_MODEL_URL: process.env.LOCAL_MODEL_URL || 'http://localhost:8000',
   GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
   GEMINI_MODEL: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+  gemmaModel: process.env.GEMMA_MODEL || 'gemma-4-31b-it',
+  TAVILY_API_KEY: process.env.TAVILY_API_KEY || '',
+  CORS_ORIGIN: process.env.CORS_ORIGIN || 'http://localhost:3000',
 };
 
 module.exports = config;

@@ -4,22 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-CodeThium is a full-stack AI chatbot with hybrid LLM support (OpenRouter, Groq, custom local model). The backend is a modular Express server backed by PostgreSQL with SSE streaming. The frontend is a React app served via nginx in Docker.
+CodeThium is a full-stack AI chatbot with hybrid LLM support (OpenRouter, Groq, Gemini, Gemma, custom local model). The backend is a modular Express server backed by PostgreSQL with SSE streaming. The frontend is a React app served via nginx in Docker.
 
 **Services:**
 - **React frontend** (`codethium-ai-web/`) — port 3000
 - **Express backend** (`codethium-ai-web/server/`) — port 4000
 - **PostgreSQL** — port 5433 (Docker service name: `postpres`)
-- **Local Model** (`codethium-model/`) — FastAPI on port 8000, Python code generation (Docker service: `local-model`)
+- **Local Model** (`codethium-model/`) — FastAPI on port 8000, ONNX Runtime inference for Python code generation (Docker service: `local-model`)
 
 ## Commands
 
 ### Docker (recommended)
 ```bash
-docker-compose up --build        # first run: build + migrate + start
-docker-compose up                # subsequent runs
-docker-compose down              # stop, keep DB data
-docker-compose down -v           # stop + wipe DB volume
+docker compose up --build        # first run: build + migrate + start
+docker compose up                # subsequent runs
+docker compose down              # stop, keep DB data
+docker compose down -v           # stop + wipe DB volume
 ```
 
 ### Backend (local dev)
@@ -46,6 +46,7 @@ Single `.env` at repo root (`AI-Chatbot/.env`) — used by both docker-compose a
 
 ```
 PORT=4000
+CORS_ORIGIN=http://localhost:3000
 DB_HOST=postpres       # Docker service name; use "localhost" for local dev
 DB_PORT=5433           # use 5432 for default local Postgres
 DB_USER=SE
@@ -60,6 +61,8 @@ GROQ_MODEL=llama-3.3-70b-versatile
 LOCAL_MODEL_URL=http://local-model:8000
 GEMINI_API_KEY=your_gemini_api_key
 GEMINI_MODEL=gemini-2.5-flash
+GEMMA_MODEL=gemma-4-31b-it
+TAVILY_API_KEY=tvly-...       # optional: enables real-time web search
 ```
 
 See `.env.example` at repo root for a complete template.
@@ -74,35 +77,41 @@ REACT_APP_API_URL=http://localhost:4000
 ## Architecture
 
 ### Request Flow
-1. User logs in via `src/components/LoginPage.js` → `POST /api/login` (httpOnly cookie)
-2. Auth state managed by `src/context/AuthContext.js` (rehydrates via `GET /api/me` on refresh)
+1. User logs in via `src/components/LoginPage.js` → `POST /api/login` → sets `token` (15 min) + `refresh_token` (7 day) httpOnly cookies
+2. Auth state managed by `src/context/AuthContext.js` (rehydrates via `GET /api/me` on refresh; 401 interceptor auto-calls `POST /api/refresh`; `forceLogout()` sets `sessionExpired` state to show modal)
 3. User sends message in `src/components/chat/ChatPage.js`
-4. `src/services/streamChat.js` POSTs to `POST /api/chats/stream`
-5. Express authenticates, loads history from DB, calls LLM provider (OpenRouter / Groq / Local)
+4. `src/services/streamChat.js` POSTs to `POST /api/chats/stream`; on 401 silently calls `POST /api/refresh` and retries; calls `onAuthError` (→ `forceLogout`) if refresh also fails
+5. Express: RAG search → web search (if time-sensitive query + TAVILY_API_KEY set) → prepend context as system messages → call LLM provider
 6. LLM response streams back as SSE (`event: token`), saved to `messages` table on completion
 
 ### Backend Structure (`codethium-ai-web/server/`)
 ```
 server/
-  index.js               — entry point with helmet, CORS, morgan
-  config/index.js        — env validation, fail-fast
+  app.js                 — Express app setup (no listen — importable for tests)
+  index.js               — entry point: runMigrations() + app.listen()
+  config/index.js        — env validation, fail-fast; includes CORS_ORIGIN
   db/
     pool.js              — pg Pool singleton
     migrate.js           — sequential migration runner (idempotent)
     migrations/
       001_initial.sql    — users + chats tables
       002_messages_table.sql — normalized messages table
+      003_attachments.sql   — GIN index on messages.metadata JSONB
+      004_documents.sql     — documents table (RAG): content_fts tsvector + GIN index
+      005_refresh_tokens.sql — refresh_tokens table for JWT refresh pattern
   middleware/
     auth.js              — JWT verify (httpOnly cookie or Bearer header)
     errorHandler.js      — centralized error handler
     rateLimit.js         — express-rate-limit (auth: 15/min, stream: 60/min, upload: 30/min)
   routes/
-    auth.js              — /api/register, /login, /logout, /me, /change-password
-    chat.js              — CRUD /api/chats + POST /api/chats/stream (SSE) + GET /:id/messages
-    upload.js            — POST /api/upload/image (→ base64 data URL), /api/upload/file (→ extracted text)
+    auth.js              — /api/register (Zod, 12-char password), /login, /refresh, /logout, /me, /change-password
+    chat.js              — CRUD /api/chats + POST /api/chats/stream (SSE + RAG injection) + GET /:id/messages
+    upload.js            — POST /api/upload/image (→ base64 data URL), /api/upload/file (→ text + RAG store)
   services/
-    fileParser.js        — PDF text extraction (pdf-parse) + UTF-8 text files, 8000 char limit
-    formatLocalResponse.js — heuristic Python formatter for local model output; splits flat code, infers indentation, wraps in ```python fences
+    fileParser.js        — extractText() (8K truncated, for inline LLM context) + extractFullText() (for RAG)
+    formatLocalResponse.js — heuristic Python formatter for local model output
+    rag.js               — storeDocument() + searchDocuments() (PostgreSQL FTS via plainto_tsquery)
+    webSearch.js         — needsWebSearch() keyword heuristic + searchWeb() Tavily API call; disabled when TAVILY_API_KEY unset
     llm/
       BaseLLMProvider.js   — abstract base class
       OpenAICompatibleProvider.js — shared OpenAI-format fetch + SSE parsing; _readSSEStream()
@@ -110,15 +119,22 @@ server/
       GroqProvider.js      — api.groq.com/openai/v1 (default: llama-3.3-70b-versatile)
       LocalModelProvider.js — FastAPI /chat endpoint; applies formatLocalResponse() on reply
       GeminiProvider.js    — generativelanguage.googleapis.com OpenAI-compat; chatStreamMultimodal() for images + PDFs
-      index.js             — factory: getProvider("openrouter"|"groq"|"local"|"gemini")
-  utils/token.js         — signToken helper
+      GemmaProvider.js     — extends GeminiProvider; uses GEMMA_MODEL; filters <thought> blocks via _filterThoughts()
+      index.js             — factory: getProvider("openrouter"|"groq"|"local"|"gemini"|"gemma")
+  utils/token.js         — signAccessToken() (15 min JWT), signRefreshToken() (random hex), hashToken() (SHA-256)
+  __tests__/
+    auth.test.js         — register/login/refresh/logout/change-password (mocks pool + bcrypt)
+    chat.test.js         — chat CRUD + SSE stream (mocks pool + rag + llm)
+    llm.test.js          — provider factory + _readSSEStream parsing (mocks fetch)
+  jest.config.js         — test environment, setupFiles, testTimeout
+  jest.setup.js          — sets required env vars before module load
 ```
 
 ### Frontend Structure (`codethium-ai-web/src/`)
 ```
 src/
   context/
-    AuthContext.js           — user state, login/logout, cookie rehydration
+    AuthContext.js           — user state, login/logout, cookie rehydration; forceLogout() + sessionExpired state for expired-session modal
     ThemeContext.js          — light/dark theme state; persists to localStorage; sets data-theme on <html>
   services/
     api.js                   — Axios instance (baseURL from env, withCredentials)
@@ -130,14 +146,14 @@ src/
       Spinner.js             — Lucide Loader2 spinner
     chat/
       ChatPage.js            — top-level composition
-      ChatSidebar.js         — chat history list, new/delete, Sun/Moon theme toggle
+      ChatSidebar.js         — chat history list, new/delete chat; Settings icon in footer
       MessageList.js         — scrollable area, auto-scroll, AnimatePresence
       MessageBubble.js       — gradient user bubble, glass assistant bubble, Lucide avatars
       MessageContent.js      — react-markdown + syntax highlighting (prose prose-invert)
       ChatInput.js           — textarea, model selector, send button, file upload
       FileUploadButton.js    — Lucide ImageIcon/Paperclip upload buttons
       ImagePreview.js        — attachment thumbnail strip with AnimatePresence
-      SettingsPanel.js       — logout, password change, Framer Motion entrance
+      SettingsPanel.js       — full-screen modal: profile card, theme toggle, model radio list, change password (collapsible), sign-out
 ```
 
 ### Design System (Phase 8)
@@ -147,26 +163,32 @@ src/
 - **Dark theme (default):** surfaces `#0b0b14`/`#13131f`/`#1c1c2e`/`#252538`
 - **Light theme:** surfaces `#f4f4f8`/`#eaeaf2`/`#e0e0ec`/`#d5d5e4`; toggled via `html[data-theme="light"]`
 - **Glass utility:** `.glass` = `bg-white/5 backdrop-blur-xl border border-white/10`; overridden to `rgba(0,0,0,0.03)` in light mode
-- **Theme toggle:** Sun/Moon button in sidebar bottom bar; preference saved to `localStorage`
+- **Theme toggle:** Pill toggle switch inside the Settings modal (Moon/Sun icon inside thumb); preference saved to `localStorage`
 
 ### Database Schema
 ```sql
 -- users: id, username (unique), email (unique), password_hash, created_at
 -- chats: id, user_id (FK), title, message JSONB, created_at, updated_at
 -- messages: id, chat_id (FK), role ('user'|'assistant'|'system'), content, metadata JSONB, created_at
+-- documents: id, user_id (FK), chat_id (FK nullable), filename, content TEXT, content_fts tsvector (generated), created_at
+-- refresh_tokens: id, user_id (FK), token_hash TEXT (unique), expires_at, created_at
 -- schema_migrations: filename, applied_at
 ```
 
-### File & Image Upload (Phase 5)
+### File & Image Upload + RAG (Phases 5 + 9)
 
 Two-step flow: files uploaded first via `POST /api/upload/*`, payload returned to client, then included in the stream request body.
 
 - **Images** → base64 data URL → auto-routed to `GeminiProvider.chatStreamMultimodal()` (overrides selected model)
-- **PDFs** → base64 data URL (native PDF) → auto-routed to Gemini for native PDF understanding
-- **Text/code files** → extracted text (UTF-8) → injected as context prefix before the user's question in `POST /api/chats/stream`
+- **PDFs** → base64 data URL (native PDF) → auto-routed to Gemini; full text also stored in `documents` table for RAG
+- **Text/code files** → extracted text (8K truncated) returned to client for inline LLM context; full text stored in `documents` table for RAG
 - Only `{type, name}` written to `messages.metadata` — the base64 payload is never stored in the DB
 - `express.json()` body limit is `10mb` to accommodate base64 payloads
 - multer: `memoryStorage`, 5MB file size cap, scoped error handler in `upload.js`
+
+**RAG flow:** On `POST /api/chats/stream` with no attachments, `searchDocuments(userId, content, 4)` runs a PostgreSQL FTS query (`plainto_tsquery`) against the user's stored documents. Any matching snippets are prepended as an ephemeral system message (not persisted to DB).
+
+**Web search flow:** After RAG, `needsWebSearch(content)` checks for time-sensitive keywords (today, weather, news, price, etc.). If matched and `TAVILY_API_KEY` is set, `searchWeb(content, 5)` calls the Tavily API and prepends live results as a second system message. A `event: info` SSE event is sent to notify the frontend. Feature is silently disabled when the key is absent.
 
 ### LLM Streaming (SSE)
 ```
@@ -191,6 +213,9 @@ Automatic 429 fallback: OpenRouter ↔ Groq.
 | Phase 6 — Chat UX Polish | ✅ Done | Auto-title, rename, date grouping, search |
 | Phase 7 — Gemini Multimodal Provider | ✅ Done | GeminiProvider, image+PDF upload, auto-route to Gemini |
 | Phase 8 — Frontend UI Overhaul | ✅ Done | Tailwind + Framer Motion, light/dark theme, local model formatting |
-| Phase 9 — Production Hardening | 🔲 Pending | RAG (PostgreSQL FTS), Jest tests, deployment |
+| Phase 9 — Production Hardening | ✅ Done | CORS from env, password strength (12+ chars), JWT refresh tokens, RAG (PostgreSQL FTS), Jest tests (41 tests) |
+| Phase 10 — Gemma + Web Search | ✅ Done | Gemma 4 31B provider, thought-block filtering, Tavily web search with keyword heuristic |
+| Phase 11 — Docker Optimization | ✅ Done | Local model: PyTorch→ONNX Runtime (995 MB→408 MB); .dockerignore for model artifacts |
+| Phase 12 — Auth UX + Settings Redesign | ✅ Done | SSE 401 auto-refresh + session-expired modal; Settings redesigned as full-screen modal (profile, theme toggle, model radio list, change password, sign-out) |
 
 See `implementation_plan.md` for detailed task lists and file paths per phase.

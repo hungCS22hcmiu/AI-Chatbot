@@ -9,7 +9,10 @@ const MODELS = [
   { value: 'openrouter', label: 'Llama 3 (OpenRouter)' },
   { value: 'local', label: 'CodeThium Local' },
   { value: 'gemini', label: 'Gemini 2.5 Flash (multimodal)' },
+  { value: 'gemma', label: 'Gemma 4 31B (Google AI Studio)' },
 ];
+
+const MULTIMODAL_MODELS = ['gemini', 'gemma'];
 
 const MODEL_KEY = 'codethium_default_model';
 
@@ -23,10 +26,10 @@ function ChatInput({ onSend, isStreaming, disabled }) {
   const prevModelRef = useRef(model);
   useEffect(() => {
     const hasMultimodal = attachments.some(a => a.type === 'image' || a.type === 'pdf');
-    if (hasMultimodal && model !== 'gemini') {
+    if (hasMultimodal && !MULTIMODAL_MODELS.includes(model)) {
       prevModelRef.current = model;
       setModel('gemini');
-    } else if (!hasMultimodal && model === 'gemini' && prevModelRef.current !== 'gemini') {
+    } else if (!hasMultimodal && MULTIMODAL_MODELS.includes(model) && !MULTIMODAL_MODELS.includes(prevModelRef.current)) {
       setModel(prevModelRef.current);
     }
   }, [attachments]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -85,8 +88,8 @@ function ChatInput({ onSend, isStreaming, disabled }) {
         <select
           value={model}
           onChange={handleModelChange}
-          disabled={isStreaming || hasMultimodal}
-          title={hasMultimodal ? 'Auto-switched to Gemini for multimodal' : ''}
+          disabled={isStreaming}
+          title={hasMultimodal && !MULTIMODAL_MODELS.includes(model) ? 'Auto-switched to a multimodal model' : ''}
           className="bg-surface-2 text-zinc-300 border border-white/10 rounded-lg px-3 py-1.5 text-xs
             outline-none cursor-pointer flex-shrink-0
             disabled:opacity-60 disabled:cursor-not-allowed

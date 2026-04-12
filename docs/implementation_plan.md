@@ -20,7 +20,7 @@ Replace the non-functional custom PyTorch model with real LLM APIs, restructure 
 | Phase 6 — Chat UX Polish | ✅ DONE | Auto-title, rename, date grouping, search |
 | Phase 7 — Gemini Multimodal Provider | ✅ DONE | Replace broken vision path with Gemini (images + PDFs) — see `refacter.md` |
 | Phase 8 — Frontend UI Overhaul | ✅ DONE | Tailwind + Framer Motion, colorful/dynamic redesign, light/dark theme, local model formatting — see `refacter.md` |
-| Phase 9 — Production Hardening | 🔲 Pending | RAG, tests, deployment |
+| Phase 9 — Production Hardening | ✅ DONE | CORS env, password strength, JWT refresh tokens, RAG (PostgreSQL FTS), Jest 41 tests, README |
 
 ---
 
@@ -374,37 +374,40 @@ See `refacter.md` for the full rationale and file-by-file breakdown.
 
 ---
 
-## Phase 9 — Production Hardening 🔲
+## Phase 9 — Production Hardening ✅ DONE
 
 ### Security & Reliability
 
-- [ ] Input sanitization on all user-provided text
-- [ ] CORS configuration from env var (not hardcoded `localhost:3000`)
-- [ ] Password strength validation (12+ chars, mixed case)
-- [ ] JWT refresh token pattern (short access + long refresh)
+- [x] Input sanitization on all user-provided text (Zod schemas on register, change-password; content `.max(10000).trim()`)
+- [x] CORS configuration from env var `CORS_ORIGIN` (comma-separated; default `http://localhost:3000`)
+- [x] Password strength validation (12+ chars, uppercase + lowercase + number + special character)
+- [x] JWT refresh token pattern — access token (15 min) + opaque refresh token (7 day, hashed in DB)
 
 ### Testing
 
-- [ ] Create `server/__tests__/auth.test.js` (Jest + Supertest)
-- [ ] Create `server/__tests__/chat.test.js`
-- [ ] Create `server/__tests__/llm.test.js` (mocked provider)
+- [x] Create `server/__tests__/auth.test.js` — 21 tests (Jest + Supertest, mocked pool + bcrypt)
+- [x] Create `server/__tests__/chat.test.js` — 8 tests (mocked pool, rag, llm)
+- [x] Create `server/__tests__/llm.test.js` — 12 tests (provider factory + SSE stream parsing with mocked fetch)
+- [x] `server/jest.config.js` + `server/jest.setup.js` — test env vars, no real DB required
+- [x] Install jest + supertest as devDependencies; `npm test` → 41 tests pass
 
 ### RAG — Retrieval-Augmented Generation
 
-- [ ] Create `server/services/rag.js`
-- [ ] Create `server/db/migrations/004_documents.sql` — `documents` table with `tsvector` full-text search
-- [ ] When user uploads docs: chunk + store in `documents` table
-- [ ] Before LLM call: search user's docs for relevant chunks, inject as context
-- [ ] Uses PostgreSQL built-in FTS — no vector DB needed
+- [x] Create `server/services/rag.js` — `storeDocument()` + `searchDocuments()` (PostgreSQL FTS)
+- [x] Create `server/db/migrations/004_documents.sql` — `documents` table with `tsvector` + GIN index
+- [x] When user uploads docs: `extractFullText()` → `storeDocument()` (no 8K truncation for storage)
+- [x] Before LLM call: `searchDocuments(userId, content, 4)` → inject top snippets as system message
+- [x] Uses PostgreSQL built-in FTS (`plainto_tsquery`) — no vector DB needed
 
-### Deployment
+### Deployment Prep
 
-- [ ] Deploy Express to Railway or Render
-- [ ] Deploy PostgreSQL to Supabase or Railway
-- [ ] Rewrite `README.md` — architecture diagram, setup instructions, screenshots, live URL
-- [ ] Update `CLAUDE.md` to reflect final architecture
+- [x] CORS origin from `CORS_ORIGIN` env var (see above)
+- [x] Rewrite `README.md` — architecture diagram, setup instructions, API reference, env vars table
+- [x] Update `CLAUDE.md` to reflect Phase 9 architecture (new files, DB tables, auth flow)
+- [x] Update `.env.example` with `CORS_ORIGIN`
+- [x] Update `server/.dockerignore` and `codethium-ai-web/.dockerignore` to exclude tests/coverage
 
-**Verification:** `npm test` passes. Live URL accessible. Upload a document, ask about it — RAG retrieval works.
+**Verification:** `cd codethium-ai-web/server && npm test` → 41 tests pass (no DB required). Upload a document via `/api/upload/file`, then ask about its content — RAG injects matching snippets into LLM context.
 
 ---
 

@@ -34,4 +34,23 @@ async function extractText(buffer, mimetype) {
   throw err;
 }
 
-module.exports = { extractText };
+/**
+ * Extract full text without truncation — used for RAG document storage.
+ * @param {Buffer} buffer
+ * @param {string} mimetype
+ * @returns {Promise<string>}
+ */
+async function extractFullText(buffer, mimetype) {
+  if (mimetype === 'application/pdf') {
+    const data = await pdfParse(buffer);
+    return data.text;
+  }
+  if (mimetype.startsWith('text/') || TEXT_MIMETYPES.has(mimetype)) {
+    return buffer.toString('utf8');
+  }
+  const err = new Error('Unsupported file type');
+  err.status = 415;
+  throw err;
+}
+
+module.exports = { extractText, extractFullText };

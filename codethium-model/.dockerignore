@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+train_model.py
+export_onnx.py
+tiny_transformer.pth
+vocab.pth
+vocab_portable.pth
+fullspm_corpus.txt

@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import api from '../../services/api';
 import { streamChat } from '../../services/streamChat';
+import { useAuth } from '../../context/AuthContext';
 import ChatSidebar from './ChatSidebar';
 import MessageList from './MessageList';
 import ChatInput from './ChatInput';
 
 function ChatPage() {
+  const { forceLogout } = useAuth();
   const [activeChat, setActiveChat] = useState(null);
   const [messages, setMessages] = useState([]);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -40,6 +42,10 @@ function ChatPage() {
       content,
       model,
       attachments,
+      onAuthError: () => {
+        setIsStreaming(false);
+        forceLogout();
+      },
       onToken: (chunk) => {
         assistantContent += chunk;
         setMessages(prev => {

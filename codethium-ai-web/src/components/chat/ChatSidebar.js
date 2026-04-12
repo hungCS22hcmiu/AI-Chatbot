@@ -1,9 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Trash2, Settings, X, Sun, Moon } from 'lucide-react';
+import { Plus, Trash2, Settings, X } from 'lucide-react';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
-import { useTheme } from '../../context/ThemeContext';
 import SettingsPanel from './SettingsPanel';
 import Button from '../ui/Button';
 
@@ -32,7 +31,6 @@ function ChatSidebar({ activeChatId, onSelectChat, onNewChat, onRegisterTitleCha
   const [editingTitle, setEditingTitle] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const { user } = useAuth();
-  const { theme, toggleTheme } = useTheme();
   const editRef = useRef(null);
 
   useEffect(() => {
@@ -144,6 +142,7 @@ function ChatSidebar({ activeChatId, onSelectChat, onNewChat, onRegisterTitleCha
   );
 
   return (
+    <>
     <div className="w-60 flex-shrink-0 bg-surface-1 flex flex-col border-r border-white/10 h-full relative">
       {/* Top: new chat + search */}
       <div className="p-4 pb-2 space-y-2">
@@ -194,40 +193,31 @@ function ChatSidebar({ activeChatId, onSelectChat, onNewChat, onRegisterTitleCha
       </div>
 
       {/* User footer */}
-      <div className="border-t border-white/10 p-3 relative">
+      <div className="border-t border-white/10 p-3">
         <div className="flex items-center justify-between">
           <span className="text-xs text-muted truncate flex-1">
             {user?.username || user?.email}
           </span>
-          <div className="flex items-center gap-1 flex-shrink-0">
-            <button
-              onClick={toggleTheme}
-              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-              className="p-1.5 rounded-lg transition-colors text-muted hover:text-zinc-200"
-            >
-              {theme === 'dark'
-                ? <Sun size={14} />
-                : <Moon size={14} />}
-            </button>
-            <button
-              onClick={() => setShowSettings(s => !s)}
-              title="Settings"
-              className={`p-1.5 rounded-lg transition-colors ${
-                showSettings ? 'text-brand-primary' : 'text-muted hover:text-zinc-200'
-              }`}
-            >
-              <Settings size={14} />
-            </button>
-          </div>
+          <button
+            onClick={() => setShowSettings(s => !s)}
+            title="Settings"
+            className={`p-1.5 rounded-lg transition-colors flex-shrink-0 ${
+              showSettings ? 'text-brand-primary' : 'text-muted hover:text-zinc-200'
+            }`}
+          >
+            <Settings size={14} />
+          </button>
         </div>
-
-        <AnimatePresence>
-          {showSettings && (
-            <SettingsPanel onClose={() => setShowSettings(false)} />
-          )}
-        </AnimatePresence>
       </div>
     </div>
+
+    {/* Settings modal — rendered outside sidebar so fixed overlay isn't clipped */}
+    <AnimatePresence>
+      {showSettings && (
+        <SettingsPanel onClose={() => setShowSettings(false)} />
+      )}
+    </AnimatePresence>
+    </>
   );
 }
 
