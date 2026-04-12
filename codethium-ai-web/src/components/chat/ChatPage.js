@@ -72,13 +72,7 @@ function ChatPage() {
   };
 
   return (
-    <div style={{
-      display: 'flex',
-      height: '100vh',
-      background: '#13131f',
-      color: '#fff',
-      fontFamily: 'system-ui, sans-serif',
-    }}>
+    <div className="flex h-screen bg-gradient-to-br from-violet-900/10 via-surface-0 to-cyan-900/10 text-zinc-100">
       <ChatSidebar
         activeChatId={activeChat?.id}
         onSelectChat={loadChat}
@@ -86,30 +80,17 @@ function ChatPage() {
         onRegisterTitleChange={(fn) => setOnChatTitleChange(() => fn)}
       />
 
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div className="flex-1 flex flex-col overflow-hidden">
         {activeChat ? (
           <>
-            <div style={{
-              padding: '12px 16px',
-              borderBottom: '1px solid #1e1e2e',
-              fontSize: '15px',
-              fontWeight: 600,
-              color: '#ccc',
-            }}>
+            <div className="px-4 py-3 border-b border-white/10 text-sm font-semibold text-zinc-200">
               {activeChat.title}
             </div>
             <MessageList messages={messages} isStreaming={isStreaming} />
             <ChatInput onSend={handleSend} isStreaming={isStreaming} />
           </>
         ) : (
-          <div style={{
-            flex: 1,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#555',
-            fontSize: '15px',
-          }}>
+          <div className="flex-1 flex items-center justify-center text-muted text-sm">
             Select a chat or create a new one
           </div>
         )}

@@ -1,5 +1,6 @@
 const BaseLLMProvider = require('./BaseLLMProvider');
 const config = require('../../config');
+const formatLocalResponse = require('../formatLocalResponse');
 
 class LocalModelProvider extends BaseLLMProvider {
   getModelName() {
@@ -29,7 +30,7 @@ class LocalModelProvider extends BaseLLMProvider {
       throw new Error(`Local model error ${res.status}: ${text}`);
     }
     const data = await res.json();
-    yield data.reply;
+    yield formatLocalResponse(data.reply);
   }
 }
 

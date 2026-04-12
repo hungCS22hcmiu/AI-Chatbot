@@ -265,6 +265,6 @@ def generate(model, vocab, sp_processor, prompt, max_new_tokens=200, top_k=50, t
 
   toks_out = vocab.decode(x[0].tolist())
   output = spm_detokenize_pieces(sp_processor,toks_out)
-  output = output.replace('<BOS> #','').replace('<EOS>','').replace('<PAD>','').replace('<NL>',':<br>').replace('::',':')
+  output = output.replace('<BOS> #','').replace('<EOS>','').replace('<PAD>','').replace('<NL>','\n').replace('::',':')
   return output
 
