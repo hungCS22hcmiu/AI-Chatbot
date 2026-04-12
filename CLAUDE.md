@@ -102,12 +102,13 @@ server/
     upload.js            — POST /api/upload/image (→ base64 data URL), /api/upload/file (→ extracted text)
   services/
     fileParser.js        — PDF text extraction (pdf-parse) + UTF-8 text files, 8000 char limit
+    formatLocalResponse.js — heuristic Python formatter for local model output; splits flat code, infers indentation, wraps in ```python fences
     llm/
       BaseLLMProvider.js   — abstract base class
       OpenAICompatibleProvider.js — shared OpenAI-format fetch + SSE parsing; _readSSEStream()
       OpenRouterProvider.js — openrouter.ai/api/v1 (text only)
       GroqProvider.js      — api.groq.com/openai/v1 (default: llama-3.3-70b-versatile)
-      LocalModelProvider.js — FastAPI /chat endpoint
+      LocalModelProvider.js — FastAPI /chat endpoint; applies formatLocalResponse() on reply
       GeminiProvider.js    — generativelanguage.googleapis.com OpenAI-compat; chatStreamMultimodal() for images + PDFs
       index.js             — factory: getProvider("openrouter"|"groq"|"local"|"gemini")
   utils/token.js         — signToken helper
@@ -116,19 +117,37 @@ server/
 ### Frontend Structure (`codethium-ai-web/src/`)
 ```
 src/
-  context/AuthContext.js           — user state, login/logout, cookie rehydration
-  services/api.js                  — Axios instance (baseURL from env, withCredentials)
-  services/streamChat.js           — fetch + ReadableStream SSE client
-  components/chat/
-    ChatPage.js                    — top-level composition
-    ChatSidebar.js                 — chat history list, new/delete
-    MessageList.js                 — scrollable area, auto-scroll
-    MessageBubble.js               — user vs assistant styling; renders attachment thumbnails
-    MessageContent.js              — react-markdown + syntax highlighting
-    ChatInput.js                   — textarea, model selector, send button, file upload
-    FileUploadButton.js            — image (🖼) and file (📄) upload buttons; native fetch + FormData
-    ImagePreview.js                — attachment thumbnail strip with remove buttons
+  context/
+    AuthContext.js           — user state, login/logout, cookie rehydration
+    ThemeContext.js          — light/dark theme state; persists to localStorage; sets data-theme on <html>
+  services/
+    api.js                   — Axios instance (baseURL from env, withCredentials)
+    streamChat.js            — fetch + ReadableStream SSE client
+  components/
+    ui/
+      Button.js              — shared button (primary/ghost/icon/danger variants)
+      GlassCard.js           — glass card wrapper (.glass .gradient-border)
+      Spinner.js             — Lucide Loader2 spinner
+    chat/
+      ChatPage.js            — top-level composition
+      ChatSidebar.js         — chat history list, new/delete, Sun/Moon theme toggle
+      MessageList.js         — scrollable area, auto-scroll, AnimatePresence
+      MessageBubble.js       — gradient user bubble, glass assistant bubble, Lucide avatars
+      MessageContent.js      — react-markdown + syntax highlighting (prose prose-invert)
+      ChatInput.js           — textarea, model selector, send button, file upload
+      FileUploadButton.js    — Lucide ImageIcon/Paperclip upload buttons
+      ImagePreview.js        — attachment thumbnail strip with AnimatePresence
+      SettingsPanel.js       — logout, password change, Framer Motion entrance
 ```
+
+### Design System (Phase 8)
+
+- **Brand gradient:** `#7c3aed` (violet) → `#ec4899` (pink) → `#f59e0b` (amber)
+- **Tailwind config:** `surface.{0-3}` and `muted` reference CSS variables (`var(--surface-N)`)
+- **Dark theme (default):** surfaces `#0b0b14`/`#13131f`/`#1c1c2e`/`#252538`
+- **Light theme:** surfaces `#f4f4f8`/`#eaeaf2`/`#e0e0ec`/`#d5d5e4`; toggled via `html[data-theme="light"]`
+- **Glass utility:** `.glass` = `bg-white/5 backdrop-blur-xl border border-white/10`; overridden to `rgba(0,0,0,0.03)` in light mode
+- **Theme toggle:** Sun/Moon button in sidebar bottom bar; preference saved to `localStorage`
 
 ### Database Schema
 ```sql
@@ -171,7 +190,7 @@ Automatic 429 fallback: OpenRouter ↔ Groq.
 | Phase 5 — File & Image Upload | ✅ Done | multer, pdf-parse, multimodal LLM, FileUploadButton |
 | Phase 6 — Chat UX Polish | ✅ Done | Auto-title, rename, date grouping, search |
 | Phase 7 — Gemini Multimodal Provider | ✅ Done | GeminiProvider, image+PDF upload, auto-route to Gemini |
-| Phase 8 — Frontend UI Overhaul | 🔲 Pending | Tailwind + Framer Motion, colorful/dynamic redesign |
+| Phase 8 — Frontend UI Overhaul | ✅ Done | Tailwind + Framer Motion, light/dark theme, local model formatting |
 | Phase 9 — Production Hardening | 🔲 Pending | RAG (PostgreSQL FTS), Jest tests, deployment |
 
 See `implementation_plan.md` for detailed task lists and file paths per phase.

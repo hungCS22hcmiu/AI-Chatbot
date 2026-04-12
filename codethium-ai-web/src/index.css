@@ -1,14 +1,103 @@
-body {
-  font-family: Arial, sans-serif;
-  background-color: #f4f4f4;
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* === Theme variables === */
+:root {
+  --surface-0: #0b0b14;
+  --surface-1: #13131f;
+  --surface-2: #1c1c2e;
+  --surface-3: #252538;
+  --text-muted: #a1a1aa;
 }
-button {
-  background-color: #007bff;
-  color: white;
-  border: none;
-  padding: 10px;
-  cursor: pointer;
+
+html[data-theme="light"] {
+  --surface-0: #f4f4f8;
+  --surface-1: #eaeaf2;
+  --surface-2: #e0e0ec;
+  --surface-3: #d5d5e4;
+  --text-muted: #6b7280;
 }
-button:hover {
-  background-color: #0056b3;
+
+@layer base {
+  body {
+    @apply bg-surface-0 font-sans antialiased;
+    color: #f4f4f5;
+  }
+  * {
+    box-sizing: border-box;
+  }
+}
+
+@layer utilities {
+  .glass {
+    @apply bg-white/5 backdrop-blur-xl border border-white/10;
+  }
+  .gradient-border {
+    position: relative;
+  }
+  .gradient-border::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg, #7c3aed, #ec4899, #f59e0b);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 4px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-white/10 rounded-full;
+  }
+}
+
+/* === Light-mode overrides === */
+html[data-theme="light"] body {
+  color: #111827;
+}
+html[data-theme="light"] .text-zinc-100 { color: #111827; }
+html[data-theme="light"] .text-zinc-200 { color: #1f2937; }
+html[data-theme="light"] .text-zinc-300 { color: #374151; }
+html[data-theme="light"] .text-zinc-400 { color: #4b5563; }
+html[data-theme="light"] .text-zinc-500 { color: #6b7280; }
+
+html[data-theme="light"] .glass {
+  background: rgba(0, 0, 0, 0.03);
+  border-color: rgba(0, 0, 0, 0.09);
+}
+html[data-theme="light"] .scrollbar-thin::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.12);
+}
+
+html[data-theme="light"] [class*="border-white\/"] {
+  border-color: rgba(0, 0, 0, 0.1);
+}
+html[data-theme="light"] [class*="bg-white\/"] {
+  background-color: rgba(0, 0, 0, 0.04);
+}
+html[data-theme="light"] [class*="hover\:bg-white\/"]:hover {
+  background-color: rgba(0, 0, 0, 0.06);
+}
+
+/* Keep gradient borders visible in light mode */
+html[data-theme="light"] .gradient-border::before {
+  opacity: 0.6;
+}
+
+/* Prose (markdown) text in light mode */
+html[data-theme="light"] .prose-invert {
+  --tw-prose-body: #1f2937;
+  --tw-prose-headings: #111827;
+  --tw-prose-bold: #111827;
+  --tw-prose-code: #7c3aed;
+  --tw-prose-links: #7c3aed;
 }

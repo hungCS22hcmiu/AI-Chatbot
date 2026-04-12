@@ -1,7 +1,11 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Plus, Trash2, Settings, X, Sun, Moon } from 'lucide-react';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
 import SettingsPanel from './SettingsPanel';
+import Button from '../ui/Button';
 
 function groupChatsByDate(chats) {
   const now = new Date();
@@ -28,6 +32,7 @@ function ChatSidebar({ activeChatId, onSelectChat, onNewChat, onRegisterTitleCha
   const [editingTitle, setEditingTitle] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const { user } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const editRef = useRef(null);
 
   useEffect(() => {
@@ -36,7 +41,6 @@ function ChatSidebar({ activeChatId, onSelectChat, onNewChat, onRegisterTitleCha
       .catch(() => {});
   }, []);
 
-  // Register title change callback for ChatPage auto-title
   useEffect(() => {
     if (onRegisterTitleChange) {
       onRegisterTitleChange((chatId, newTitle) => {
@@ -45,7 +49,6 @@ function ChatSidebar({ activeChatId, onSelectChat, onNewChat, onRegisterTitleCha
     }
   }, [onRegisterTitleChange]);
 
-  // Focus rename input when editing starts
   useEffect(() => {
     if (editingId && editRef.current) editRef.current.focus();
   }, [editingId]);
@@ -97,22 +100,20 @@ function ChatSidebar({ activeChatId, onSelectChat, onNewChat, onRegisterTitleCha
   const GROUP_ORDER = ['Today', 'Yesterday', 'Previous 7 Days', 'Older'];
 
   const renderChatItem = (chat) => (
-    <div
+    <motion.div
       key={chat.id}
+      layout
+      initial={{ opacity: 0, x: -10 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: -20 }}
+      transition={{ duration: 0.15 }}
       onClick={() => editingId !== chat.id && onSelectChat(chat)}
       onDoubleClick={(e) => startRename(e, chat)}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '8px 10px',
-        borderRadius: '8px',
-        cursor: 'pointer',
-        background: activeChatId === chat.id ? '#1e1e2e' : 'transparent',
-        color: '#ccc',
-        fontSize: '13px',
-        marginBottom: '2px',
-      }}
+      className={`group flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer mb-0.5 transition-colors
+        ${activeChatId === chat.id
+          ? 'bg-surface-2 border-l-2 border-brand-primary'
+          : 'hover:bg-white/5 border-l-2 border-transparent'
+        }`}
     >
       {editingId === chat.id ? (
         <input
@@ -122,173 +123,110 @@ function ChatSidebar({ activeChatId, onSelectChat, onNewChat, onRegisterTitleCha
           onBlur={() => commitRename(chat.id)}
           onKeyDown={(e) => handleRenameKey(e, chat.id)}
           onClick={(e) => e.stopPropagation()}
-          style={{
-            flex: 1,
-            background: '#2a2a3e',
-            color: '#fff',
-            border: '1px solid #3a3a5e',
-            borderRadius: '4px',
-            padding: '2px 6px',
-            fontSize: '13px',
-            outline: 'none',
-          }}
+          className="flex-1 bg-surface-3 text-zinc-100 border border-white/20 rounded px-2 py-0.5 text-xs outline-none"
         />
       ) : (
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}
-          title="Double-click to rename">
+        <span
+          className="text-zinc-300 text-xs truncate flex-1"
+          title="Double-click to rename"
+        >
           {chat.title || 'Untitled'}
         </span>
       )}
       <button
         onClick={(e) => handleDelete(e, chat.id)}
-        style={{
-          background: 'none',
-          border: 'none',
-          color: '#555',
-          cursor: 'pointer',
-          fontSize: '16px',
-          flexShrink: 0,
-          lineHeight: 1,
-          marginLeft: '4px',
-        }}
         title="Delete chat"
+        className="opacity-0 group-hover:opacity-100 transition-opacity text-zinc-500 hover:text-red-400 ml-1 flex-shrink-0"
       >
-        ×
+        <Trash2 size={13} />
       </button>
-    </div>
+    </motion.div>
   );
 
   return (
-    <div style={{
-      width: '240px',
-      flexShrink: 0,
-      background: '#0d0d1a',
-      display: 'flex',
-      flexDirection: 'column',
-      borderRight: '1px solid #1e1e2e',
-      height: '100%',
-      position: 'relative',
-    }}>
-      <div style={{ padding: '16px 16px 8px' }}>
-        <button
-          onClick={handleNewChat}
-          style={{
-            width: '100%',
-            padding: '8px',
-            background: '#2563eb',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            fontSize: '14px',
-            marginBottom: '8px',
-          }}
-        >
-          + New Chat
-        </button>
-        <div style={{ position: 'relative' }}>
+    <div className="w-60 flex-shrink-0 bg-surface-1 flex flex-col border-r border-white/10 h-full relative">
+      {/* Top: new chat + search */}
+      <div className="p-4 pb-2 space-y-2">
+        <Button variant="primary" onClick={handleNewChat} className="w-full flex items-center justify-center gap-2 py-2 text-sm">
+          <Plus size={16} /> New Chat
+        </Button>
+        <div className="relative">
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search chats..."
-            style={{
-              width: '100%',
-              padding: '6px 28px 6px 10px',
-              background: '#1e1e2e',
-              color: '#ccc',
-              border: '1px solid #2a2a3e',
-              borderRadius: '6px',
-              fontSize: '12px',
-              outline: 'none',
-              boxSizing: 'border-box',
-            }}
+            placeholder="Search chats…"
+            className="w-full bg-surface-2 text-zinc-300 border border-white/10 rounded-lg px-3 py-1.5 text-xs outline-none placeholder:text-zinc-500 focus:border-brand-primary/50 transition-colors"
           />
           {search && (
             <button
               onClick={() => setSearch('')}
-              style={{
-                position: 'absolute',
-                right: '6px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                background: 'none',
-                border: 'none',
-                color: '#555',
-                cursor: 'pointer',
-                fontSize: '14px',
-                lineHeight: 1,
-                padding: 0,
-              }}
-            >×</button>
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-zinc-200 transition-colors"
+            >
+              <X size={12} />
+            </button>
           )}
         </div>
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px' }}>
-        {displayedChats ? (
-          displayedChats.length === 0
-            ? <div style={{ color: '#555', fontSize: '12px', padding: '8px 10px' }}>No results</div>
-            : displayedChats.map(renderChatItem)
-        ) : (
-          GROUP_ORDER.map(label => {
-            const group = grouped[label];
-            if (!group || group.length === 0) return null;
-            return (
-              <div key={label}>
-                <div style={{
-                  fontSize: '11px',
-                  color: '#555',
-                  padding: '8px 10px 4px',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.05em',
-                }}>
-                  {label}
+      {/* Chat list */}
+      <div className="flex-1 overflow-y-auto px-2 scrollbar-thin">
+        <AnimatePresence>
+          {displayedChats ? (
+            displayedChats.length === 0
+              ? <p className="text-muted text-xs px-3 py-2">No results</p>
+              : displayedChats.map(renderChatItem)
+          ) : (
+            GROUP_ORDER.map(label => {
+              const group = grouped[label];
+              if (!group || group.length === 0) return null;
+              return (
+                <div key={label}>
+                  <p className="text-xs text-muted uppercase tracking-widest px-3 py-2 mt-1">
+                    {label}
+                  </p>
+                  {group.map(renderChatItem)}
                 </div>
-                {group.map(renderChatItem)}
-              </div>
-            );
-          })
-        )}
+              );
+            })
+          )}
+        </AnimatePresence>
       </div>
 
-      <div style={{
-        padding: '12px 16px',
-        borderTop: '1px solid #1e1e2e',
-        fontSize: '13px',
-        color: '#888',
-      }}>
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: '8px',
-        }}>
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      {/* User footer */}
+      <div className="border-t border-white/10 p-3 relative">
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-muted truncate flex-1">
             {user?.username || user?.email}
           </span>
-          <button
-            onClick={() => setShowSettings(s => !s)}
-            title="Settings"
-            style={{
-              background: 'none',
-              border: 'none',
-              color: showSettings ? '#2563eb' : '#555',
-              cursor: 'pointer',
-              fontSize: '16px',
-              flexShrink: 0,
-              lineHeight: 1,
-              padding: '2px 4px',
-            }}
-          >
-            ⚙
-          </button>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <button
+              onClick={toggleTheme}
+              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              className="p-1.5 rounded-lg transition-colors text-muted hover:text-zinc-200"
+            >
+              {theme === 'dark'
+                ? <Sun size={14} />
+                : <Moon size={14} />}
+            </button>
+            <button
+              onClick={() => setShowSettings(s => !s)}
+              title="Settings"
+              className={`p-1.5 rounded-lg transition-colors ${
+                showSettings ? 'text-brand-primary' : 'text-muted hover:text-zinc-200'
+              }`}
+            >
+              <Settings size={14} />
+            </button>
+          </div>
         </div>
-      </div>
 
-      {showSettings && (
-        <SettingsPanel onClose={() => setShowSettings(false)} />
-      )}
+        <AnimatePresence>
+          {showSettings && (
+            <SettingsPanel onClose={() => setShowSettings(false)} />
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }

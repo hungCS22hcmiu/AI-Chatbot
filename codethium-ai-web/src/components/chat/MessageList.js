@@ -1,17 +1,16 @@
 import React, { useEffect, useRef } from 'react';
+import { AnimatePresence } from 'framer-motion';
 import MessageBubble from './MessageBubble';
 
 function TypingIndicator() {
   return (
-    <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: '12px' }}>
-      <div style={{
-        padding: '10px 16px',
-        borderRadius: '18px 18px 18px 4px',
-        background: '#1e1e2e',
-        color: '#888',
-        fontSize: '14px',
-      }}>
-        ···
+    <div className="flex justify-start mb-3">
+      <div className="glass rounded-2xl rounded-bl-sm px-4 py-2 text-sm text-muted">
+        <span className="inline-flex gap-1">
+          <span className="animate-bounce [animation-delay:0ms]">·</span>
+          <span className="animate-bounce [animation-delay:150ms]">·</span>
+          <span className="animate-bounce [animation-delay:300ms]">·</span>
+        </span>
       </div>
     </div>
   );
@@ -25,14 +24,17 @@ function MessageList({ messages, isStreaming }) {
   }, [messages, isStreaming]);
 
   return (
-    <div style={{
-      flex: 1,
-      overflowY: 'auto',
-      padding: '16px',
-    }}>
-      {messages.map((msg, i) => (
-        <MessageBubble key={i} role={msg.role} content={msg.content} attachments={msg.attachments} />
-      ))}
+    <div className="flex-1 overflow-y-auto px-4 py-4 scrollbar-thin">
+      <AnimatePresence initial={false}>
+        {messages.map((msg, i) => (
+          <MessageBubble
+            key={i}
+            role={msg.role}
+            content={msg.content}
+            attachments={msg.attachments}
+          />
+        ))}
+      </AnimatePresence>
       {isStreaming && messages[messages.length - 1]?.role !== 'assistant' && (
         <TypingIndicator />
       )}

@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { Send } from 'lucide-react';
 import FileUploadButton from './FileUploadButton';
 import ImagePreview from './ImagePreview';
+import Spinner from '../ui/Spinner';
 
 const MODELS = [
   { value: 'groq', label: 'Llama 3 (Groq)' },
@@ -18,7 +20,6 @@ function ChatInput({ onSend, isStreaming, disabled }) {
   const [uploadError, setUploadError] = useState('');
   const textareaRef = useRef(null);
 
-  // Auto-switch to Gemini when attachments present; restore previous model when cleared
   const prevModelRef = useRef(model);
   useEffect(() => {
     const hasMultimodal = attachments.some(a => a.type === 'image' || a.type === 'pdf');
@@ -68,91 +69,67 @@ function ChatInput({ onSend, isStreaming, disabled }) {
     setAttachments(prev => prev.filter((_, i) => i !== index));
   };
 
+  const hasMultimodal = attachments.some(a => a.type === 'image' || a.type === 'pdf');
+  const canSend = content.trim() && !isStreaming && !disabled;
+
   return (
-    <div style={{ background: '#13131f', borderTop: '1px solid #2a2a3e' }}>
+    <div className="bg-surface-1 border-t border-white/10">
       <ImagePreview attachments={attachments} onRemove={handleRemoveAttachment} />
 
       {uploadError && (
-        <div style={{
-          color: '#ff6b6b',
-          fontSize: '12px',
-          padding: '4px 16px 0',
-        }}>
-          {uploadError}
-        </div>
+        <p className="text-red-400 text-xs px-4 pt-1">{uploadError}</p>
       )}
 
-      <div style={{
-        padding: '12px 16px',
-        display: 'flex',
-        gap: '8px',
-        alignItems: 'flex-end',
-      }}>
+      <div className="px-4 py-3 flex gap-2 items-end">
+        {/* Model selector */}
         <select
           value={model}
           onChange={handleModelChange}
-          disabled={isStreaming || attachments.some(a => a.type === 'image' || a.type === 'pdf')}
-          title={attachments.some(a => a.type === 'image' || a.type === 'pdf') ? 'Auto-switched to Gemini for multimodal' : ''}
-          style={{
-            background: '#1e1e2e',
-            color: '#ccc',
-            border: '1px solid #2a2a3e',
-            borderRadius: '8px',
-            padding: '8px',
-            fontSize: '13px',
-            cursor: isStreaming || attachments.some(a => a.type === 'image' || a.type === 'pdf') ? 'not-allowed' : 'pointer',
-            flexShrink: 0,
-          }}
+          disabled={isStreaming || hasMultimodal}
+          title={hasMultimodal ? 'Auto-switched to Gemini for multimodal' : ''}
+          className="bg-surface-2 text-zinc-300 border border-white/10 rounded-lg px-3 py-1.5 text-xs
+            outline-none cursor-pointer flex-shrink-0
+            disabled:opacity-60 disabled:cursor-not-allowed
+            focus:border-brand-primary/50 transition-colors"
         >
           {MODELS.map(m => (
             <option key={m.value} value={m.value}>{m.label}</option>
           ))}
         </select>
 
+        {/* Upload buttons */}
         <FileUploadButton
           onUploadComplete={handleUploadComplete}
           onError={setUploadError}
           disabled={isStreaming || disabled}
         />
 
+        {/* Textarea */}
         <textarea
           ref={textareaRef}
           value={content}
           onChange={(e) => setContent(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={disabled || isStreaming}
-          placeholder="Ask anything... (Enter to send, Shift+Enter for newline)"
+          placeholder="Ask anything… (Enter to send, Shift+Enter for newline)"
           rows={1}
-          style={{
-            flex: 1,
-            resize: 'none',
-            background: '#1e1e2e',
-            color: '#fff',
-            border: '1px solid #2a2a3e',
-            borderRadius: '8px',
-            padding: '8px 12px',
-            fontSize: '14px',
-            lineHeight: '1.5',
-            outline: 'none',
-            overflow: 'hidden',
-          }}
+          className="flex-1 resize-none bg-surface-2 text-zinc-100 border border-white/10
+            rounded-xl px-3 py-2 text-sm leading-relaxed outline-none overflow-hidden
+            placeholder:text-zinc-500
+            focus:border-brand-primary/50 transition-colors
+            disabled:opacity-60"
         />
 
+        {/* Send button */}
         <button
           onClick={handleSend}
-          disabled={!content.trim() || isStreaming || disabled}
-          style={{
-            background: isStreaming ? '#555' : '#2563eb',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '8px',
-            padding: '8px 16px',
-            cursor: isStreaming ? 'not-allowed' : 'pointer',
-            fontSize: '14px',
-            flexShrink: 0,
-          }}
+          disabled={!canSend}
+          className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-from to-brand-via
+            flex items-center justify-center flex-shrink-0
+            disabled:opacity-40 disabled:cursor-not-allowed
+            hover:opacity-90 transition-opacity"
         >
-          {isStreaming ? '...' : 'Send'}
+          {isStreaming ? <Spinner size={16} /> : <Send size={16} className="text-white" />}
         </button>
       </div>
     </div>

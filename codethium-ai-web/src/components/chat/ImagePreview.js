@@ -1,90 +1,46 @@
 import React from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { X, FileText } from 'lucide-react';
 
-/**
- * Renders a strip of attachment previews above the chat input.
- * Props:
- *   attachments: [{ type, payload, name }]
- *   onRemove(index) — remove an attachment by index
- */
 function ImagePreview({ attachments, onRemove }) {
   if (!attachments || attachments.length === 0) return null;
 
   return (
-    <div style={{
-      display: 'flex',
-      gap: '8px',
-      padding: '8px 16px 0',
-      flexWrap: 'wrap',
-    }}>
-      {attachments.map((att, i) => (
-        <div
-          key={i}
-          style={{
-            position: 'relative',
-            width: '72px',
-            height: '72px',
-            borderRadius: '8px',
-            overflow: 'hidden',
-            border: '1px solid rgba(255,255,255,0.15)',
-            background: '#1e1e2e',
-            flexShrink: 0,
-          }}
-        >
-          {att.type === 'image' ? (
-            <img
-              src={att.payload}
-              alt={att.name}
-              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-            />
-          ) : (
-            <div style={{
-              width: '100%',
-              height: '100%',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '4px',
-              boxSizing: 'border-box',
-            }}>
-              <span style={{ fontSize: '22px' }}>📄</span>
-              <span style={{
-                fontSize: '10px',
-                color: 'rgba(255,255,255,0.6)',
-                textAlign: 'center',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                maxWidth: '64px',
-                marginTop: '4px',
-              }}>{att.name}</span>
-            </div>
-          )}
-          <button
-            onClick={() => onRemove(i)}
-            title="Remove"
-            style={{
-              position: 'absolute',
-              top: '2px',
-              right: '2px',
-              width: '18px',
-              height: '18px',
-              background: 'rgba(0,0,0,0.7)',
-              border: 'none',
-              color: '#fff',
-              borderRadius: '50%',
-              cursor: 'pointer',
-              fontSize: '10px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: 0,
-            }}
+    <div className="flex gap-2 px-4 py-2 flex-wrap">
+      <AnimatePresence>
+        {attachments.map((att, i) => (
+          <motion.div
+            key={i}
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.8, opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="relative w-[72px] h-[72px] rounded-lg overflow-hidden border border-white/10 bg-surface-2 flex-shrink-0 group"
           >
-            ×
-          </button>
-        </div>
-      ))}
+            {att.type === 'image' ? (
+              <img
+                src={att.payload}
+                alt={att.name}
+                className="w-full h-full object-cover block"
+              />
+            ) : (
+              <div className="w-full h-full flex flex-col items-center justify-center p-1 gap-1">
+                <FileText size={22} className="text-muted" />
+                <span className="text-[10px] text-zinc-400 text-center truncate w-14">
+                  {att.name}
+                </span>
+              </div>
+            )}
+            <button
+              onClick={() => onRemove(i)}
+              title="Remove"
+              className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/70 border-none text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+            >
+              <X size={10} />
+            </button>
+          </motion.div>
+        ))}
+      </AnimatePresence>
     </div>
   );
 }

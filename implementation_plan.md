@@ -19,7 +19,7 @@ Replace the non-functional custom PyTorch model with real LLM APIs, restructure 
 | Phase 5 — File & Image Upload | ✅ DONE | multer, pdf-parse, multimodal LLM |
 | Phase 6 — Chat UX Polish | ✅ DONE | Auto-title, rename, date grouping, search |
 | Phase 7 — Gemini Multimodal Provider | ✅ DONE | Replace broken vision path with Gemini (images + PDFs) — see `refacter.md` |
-| Phase 8 — Frontend UI Overhaul | 🔲 Pending | Tailwind + Framer Motion, colorful/dynamic redesign — see `refacter.md` |
+| Phase 8 — Frontend UI Overhaul | ✅ DONE | Tailwind + Framer Motion, colorful/dynamic redesign, light/dark theme, local model formatting — see `refacter.md` |
 | Phase 9 — Production Hardening | 🔲 Pending | RAG, tests, deployment |
 
 ---
@@ -315,43 +315,62 @@ See `refacter.md` for the full rationale and file-by-file breakdown.
 
 ---
 
-## Phase 8 — Frontend UI Overhaul 🔲
+## Phase 8 — Frontend UI Overhaul ✅ DONE
 
-**Goal:** Replace the current flat cyan-on-black UI (mix of inline styles and a 663-line legacy `ChatbotPage.css`) with a colorful, dynamic, animated interface — without rewriting business logic.
+**Goal:** Replace the flat cyan-on-black UI with a colorful, dynamic, animated interface — without rewriting business logic.
 
-**Approach:** Introduce Tailwind CSS + Framer Motion + Lucide icons. Define an expanded design system (violet/pink/amber gradient brand palette, layered surface tones). Migrate components one at a time; extract shared UI primitives (`Button`, `GlassCard`, `Spinner`) under `src/components/ui/`.
+### What Was Built
 
-### Setup Tasks
-- [ ] `npm install -D tailwindcss@3 postcss autoprefixer` + `npm install framer-motion lucide-react` in `codethium-ai-web/`
-- [ ] `npx tailwindcss init -p` — create `tailwind.config.js` and `postcss.config.js`
-- [ ] Define brand palette + surface tones in `tailwind.config.js`
-- [ ] Add Tailwind directives to `src/index.css`
+| File | Purpose |
+|------|---------|
+| `codethium-ai-web/tailwind.config.js` | Tailwind v3 config — CSS variable–backed surface palette, brand gradient tokens, custom keyframes |
+| `codethium-ai-web/postcss.config.js` | PostCSS config (Tailwind + Autoprefixer) |
+| `codethium-ai-web/src/index.css` | Tailwind directives, `.glass` utility, `gradient-border` mask technique, light/dark CSS variable blocks |
+| `codethium-ai-web/public/favicon.svg` | Branded SVG favicon (violet→pink→amber gradient chat bubble) |
+| `codethium-ai-web/public/index.html` | Title → "Codethium AI", SVG favicon, theme-color `#7c3aed` |
+| `codethium-ai-web/public/manifest.json` | PWA names and brand colors updated |
+| `src/components/ui/Button.js` | Shared button primitive (`primary` / `ghost` / `icon` / `danger` variants) |
+| `src/components/ui/GlassCard.js` | Glass card wrapper (`.glass .gradient-border`) |
+| `src/components/ui/Spinner.js` | Lucide `Loader2` animated spinner |
+| `src/context/ThemeContext.js` | Light/dark theme context — persists to `localStorage`, sets `data-theme` on `<html>` |
+| `src/App.js` | Wrapped with `ThemeProvider` |
+| `src/components/LoginPage.js` | Full Tailwind restyle — animated gradient blobs, `GlassCard` form, gradient submit button |
+| `src/components/chat/ChatPage.js` | Outer wrapper → `flex h-screen bg-gradient-to-br` |
+| `src/components/chat/ChatSidebar.js` | Glass panel, Lucide icons, Framer Motion layout + `AnimatePresence`, Sun/Moon theme toggle |
+| `src/components/chat/MessageList.js` | `AnimatePresence` on messages, animated typing dots |
+| `src/components/chat/MessageBubble.js` | Gradient user bubble, glass assistant bubble, Lucide `User`/`Bot` avatars, motion entrance |
+| `src/components/chat/MessageContent.js` | `prose prose-invert` classes for markdown; light-mode bold/heading color fix |
+| `src/components/chat/ChatInput.js` | Gradient send button, `Spinner` while streaming, Lucide `Send` |
+| `src/components/chat/FileUploadButton.js` | Lucide `ImageIcon` / `Paperclip` replacing emoji |
+| `src/components/chat/ImagePreview.js` | Framer Motion `AnimatePresence` on thumbnails, Lucide `X` |
+| `src/components/chat/SettingsPanel.js` | Framer Motion scale/fade entrance, glass panel |
+| `server/services/formatLocalResponse.js` | Heuristic Python formatter — splits flat code, infers indentation, wraps in `` ```python `` fences |
+| `server/services/llm/LocalModelProvider.js` | Calls `formatLocalResponse()` on raw reply |
+| `codethium-model/model_components.py` | Fixed `<NL>` → `\n` (was `:<br>`) |
 
-### Component Refactor Tasks
-- [ ] `src/components/ui/Button.js`, `GlassCard.js`, `Spinner.js` (new primitives)
-- [ ] `ChatPage.js` — Tailwind grid, animated gradient background
-- [ ] `ChatSidebar.js` — glass card, hover lift, Framer Motion layout animations
-- [ ] `MessageList.js` — `AnimatePresence` on messages
-- [ ] `MessageBubble.js` — gradient user bubble, glass assistant bubble, Lucide avatars
-- [ ] `MessageContent.js` — restyle syntax highlighter theme
-- [ ] `ChatInput.js` — pill textarea, gradient send button, styled model popover
-- [ ] `FileUploadButton.js` — Lucide icons + tooltips
-- [ ] `ImagePreview.js` — spring animations
-- [ ] `SettingsPanel.js` — modal with backdrop blur
-- [ ] `LoginPage.js` — split-screen with animated gradient blob
+**Deleted:** `src/App.css`, `src/components/ChatbotPage.js`, `src/components/ChatbotPage.css`, `src/components/LoginPage.module.css`
 
-### Cleanup Tasks
-- [ ] Delete `src/components/ChatbotPage.js` and `ChatbotPage.css`
-- [ ] Delete `src/App.css`
-- [ ] Strip inline style objects from migrated components
+### Design System
 
-### Verification
-- Tailwind compiles cleanly under CRA 5
-- Visual pass: login gradient blob, sidebar glass + hover, message entrance animations, streaming spinner, settings modal
-- Responsive at 1280px and 768px
-- No regressions in send/upload/model-switch/logout flows
+- **Brand gradient:** violet `#7c3aed` → pink `#ec4899` → amber `#f59e0b`
+- **Surfaces (dark):** `#0b0b14` / `#13131f` / `#1c1c2e` / `#252538` (CSS variables, auto-switch on theme toggle)
+- **Surfaces (light):** `#f4f4f8` / `#eaeaf2` / `#e0e0ec` / `#d5d5e4`
+- **Glass:** `bg-white/5 backdrop-blur-xl border border-white/10` (overridden to `rgba(0,0,0,0.03)` in light mode)
 
-See `refacter.md` for the design system tokens and component-by-component visual spec.
+### Tasks
+
+- [x] Install Tailwind v3 + Framer Motion + Lucide React + @tailwindcss/typography
+- [x] Define brand palette + CSS variable–backed surface tones in `tailwind.config.js`
+- [x] Add Tailwind directives + light/dark variable blocks to `src/index.css`
+- [x] Create `src/components/ui/Button.js`, `GlassCard.js`, `Spinner.js`
+- [x] Create `src/context/ThemeContext.js` — persistent light/dark toggle
+- [x] Restyle all chat components with Tailwind + Framer Motion
+- [x] Restyle `LoginPage.js` — animated blobs, glass form card
+- [x] Fix browser tab title, SVG favicon, PWA manifest
+- [x] Fix local model `<NL>` → `\n` rendering bug
+- [x] Create `formatLocalResponse.js` — Python code structure reconstruction
+- [x] Fix bold/heading text invisible in light mode (`prose-strong`, `prose-headings`)
+- [x] Delete all legacy CSS files and inline style objects
 
 ---
 
