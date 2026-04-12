@@ -1,3 +1,6 @@
 .env
 node_modules/
 codethium-ai-web/server/coverage/
+__pycache__/
+*.pyc
+*.onnx.data
