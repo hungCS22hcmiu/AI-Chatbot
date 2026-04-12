@@ -61,6 +61,8 @@ GROQ_MODEL=llama-3.3-70b-versatile
 LOCAL_MODEL_URL=http://local-model:8000
 GEMINI_API_KEY=your_gemini_api_key
 GEMINI_MODEL=gemini-2.5-flash
+GEMMA_MODEL=gemma-4-31b-it
+TAVILY_API_KEY=tvly-...       # optional: enables real-time web search
 ```
 
 See `.env.example` at repo root for a complete template.
@@ -79,7 +81,7 @@ REACT_APP_API_URL=http://localhost:4000
 2. Auth state managed by `src/context/AuthContext.js` (rehydrates via `GET /api/me` on refresh; 401 interceptor auto-calls `POST /api/refresh`)
 3. User sends message in `src/components/chat/ChatPage.js`
 4. `src/services/streamChat.js` POSTs to `POST /api/chats/stream`
-5. Express: RAG search → prepend relevant document snippets as system message → call LLM provider
+5. Express: RAG search → web search (if time-sensitive query + TAVILY_API_KEY set) → prepend context as system messages → call LLM provider
 6. LLM response streams back as SSE (`event: token`), saved to `messages` table on completion
 
 ### Backend Structure (`codethium-ai-web/server/`)
@@ -109,6 +111,7 @@ server/
     fileParser.js        — extractText() (8K truncated, for inline LLM context) + extractFullText() (for RAG)
     formatLocalResponse.js — heuristic Python formatter for local model output
     rag.js               — storeDocument() + searchDocuments() (PostgreSQL FTS via plainto_tsquery)
+    webSearch.js         — needsWebSearch() keyword heuristic + searchWeb() Tavily API call; disabled when TAVILY_API_KEY unset
     llm/
       BaseLLMProvider.js   — abstract base class
       OpenAICompatibleProvider.js — shared OpenAI-format fetch + SSE parsing; _readSSEStream()
@@ -116,7 +119,8 @@ server/
       GroqProvider.js      — api.groq.com/openai/v1 (default: llama-3.3-70b-versatile)
       LocalModelProvider.js — FastAPI /chat endpoint; applies formatLocalResponse() on reply
       GeminiProvider.js    — generativelanguage.googleapis.com OpenAI-compat; chatStreamMultimodal() for images + PDFs
-      index.js             — factory: getProvider("openrouter"|"groq"|"local"|"gemini")
+      GemmaProvider.js     — extends GeminiProvider; uses GEMMA_MODEL; filters <thought> blocks via _filterThoughts()
+      index.js             — factory: getProvider("openrouter"|"groq"|"local"|"gemini"|"gemma")
   utils/token.js         — signAccessToken() (15 min JWT), signRefreshToken() (random hex), hashToken() (SHA-256)
   __tests__/
     auth.test.js         — register/login/refresh/logout/change-password (mocks pool + bcrypt)
@@ -184,6 +188,8 @@ Two-step flow: files uploaded first via `POST /api/upload/*`, payload returned t
 
 **RAG flow:** On `POST /api/chats/stream` with no attachments, `searchDocuments(userId, content, 4)` runs a PostgreSQL FTS query (`plainto_tsquery`) against the user's stored documents. Any matching snippets are prepended as an ephemeral system message (not persisted to DB).
 
+**Web search flow:** After RAG, `needsWebSearch(content)` checks for time-sensitive keywords (today, weather, news, price, etc.). If matched and `TAVILY_API_KEY` is set, `searchWeb(content, 5)` calls the Tavily API and prepends live results as a second system message. A `event: info` SSE event is sent to notify the frontend. Feature is silently disabled when the key is absent.
+
 ### LLM Streaming (SSE)
 ```
 event: token   data: {"content":"Hello"}
@@ -208,5 +214,6 @@ Automatic 429 fallback: OpenRouter ↔ Groq.
 | Phase 7 — Gemini Multimodal Provider | ✅ Done | GeminiProvider, image+PDF upload, auto-route to Gemini |
 | Phase 8 — Frontend UI Overhaul | ✅ Done | Tailwind + Framer Motion, light/dark theme, local model formatting |
 | Phase 9 — Production Hardening | ✅ Done | CORS from env, password strength (12+ chars), JWT refresh tokens, RAG (PostgreSQL FTS), Jest tests (41 tests) |
+| Phase 10 — Gemma + Web Search | ✅ Done | Gemma 4 31B provider, thought-block filtering, Tavily web search with keyword heuristic |
 
 See `implementation_plan.md` for detailed task lists and file paths per phase.

@@ -1,70 +1,114 @@
-# Getting Started with Create React App
+# CodeThium AI Chatbot
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+A full-stack AI chatbot with hybrid LLM support, multimodal file/image input, RAG (Retrieval-Augmented Generation), and real-time web search.
 
-## Available Scripts
+---
 
-In the project directory, you can run:
+## Features
 
-### `npm start`
+- **Multiple LLM providers** — Llama 3 via Groq, Llama 3 via OpenRouter, Gemini 2.5 Flash (multimodal), Gemma 4 31B, and a self-hosted local model
+- **Multimodal input** — attach images and PDFs; auto-routes to a vision-capable model
+- **File upload + RAG** — upload text/code files; content is stored and retrieved via PostgreSQL full-text search to augment answers
+- **Real-time web search** — automatically searches the web (via Tavily) when queries contain time-sensitive keywords (weather, news, prices, etc.)
+- **Streaming responses** — SSE-based token-by-token streaming with graceful 429 fallback between providers
+- **Auth** — register/login with JWT access tokens (15 min) + refresh tokens (7 day httpOnly cookies)
+- **Light/dark theme** — toggleable, persisted to localStorage
+- **Thought-block filtering** — strips `<thought>…</thought>` reasoning from Gemma responses
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+---
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+## Quick Start (Docker)
 
-### `npm test`
+```bash
+# 1. Copy and fill in environment variables
+cp .env.example .env
+# Edit .env — set DB_PASSWORD, JWT_SECRET, API keys
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+# 2. Build and start all services
+docker compose up --build
 
-### `npm run build`
+# 3. Open the app
+open http://localhost:3000
+```
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+To stop: `docker compose down` (keeps DB data) or `docker compose down -v` (wipes DB).
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+---
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+## Environment Variables
 
-### `npm run eject`
+Create a `.env` file at the repo root (`AI-Chatbot/.env`):
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+| Variable | Required | Description |
+|---|---|---|
+| `DB_PASSWORD` | Yes | PostgreSQL password |
+| `JWT_SECRET` | Yes | Random string, min 32 chars |
+| `OPENROUTER_API_KEY` | For OpenRouter | `sk-or-…` |
+| `GROQ_API_KEY` | For Groq | `gsk_…` |
+| `GEMINI_API_KEY` | For Gemini/Gemma | Google AI Studio key |
+| `GEMINI_MODEL` | No | Default: `gemini-2.5-flash` |
+| `GEMMA_MODEL` | No | Default: `gemma-4-31b-it` |
+| `TAVILY_API_KEY` | No | Enables real-time web search (`tvly-…`) |
+| `LOCAL_MODEL_URL` | No | FastAPI local model URL |
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+See `.env.example` for all defaults.
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+---
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+## Architecture
 
-## Learn More
+```
+Browser → React (port 3000) → Express API (port 4000) → PostgreSQL (port 5433)
+                                      ↓
+                          LLM Providers (external APIs)
+                          Web Search (Tavily API, optional)
+                          Local Model (FastAPI, port 8000)
+```
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+### Request flow
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+1. User sends a message in `ChatPage`
+2. `streamChat.js` POSTs to `POST /api/chats/stream`
+3. Server runs RAG search → injects matching document snippets as a system message
+4. If query contains time-sensitive keywords and `TAVILY_API_KEY` is set → fetches live web results and prepends them as a system message
+5. Streams LLM response back as SSE tokens; saves completed message to DB
 
-### Code Splitting
+### Services
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+| Service | File | Purpose |
+|---|---|---|
+| RAG | `server/services/rag.js` | PostgreSQL FTS over user-uploaded documents |
+| Web search | `server/services/webSearch.js` | Tavily API — live web results for real-time queries |
+| LLM providers | `server/services/llm/` | OpenRouter, Groq, Gemini, Gemma, Local |
+| File parser | `server/services/fileParser.js` | PDF + text extraction |
 
-### Analyzing the Bundle Size
+---
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+## Development
 
-### Making a Progressive Web App
+### Backend only
+```bash
+cd codethium-ai-web/server
+npm install
+npm run dev   # nodemon on port 4000
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+### Frontend only
+```bash
+cd codethium-ai-web
+npm install
+# create codethium-ai-web/.env with: REACT_APP_API_URL=http://localhost:4000
+npm start     # CRA dev server on port 3000
+```
 
-### Advanced Configuration
+### Tests
+```bash
+cd codethium-ai-web/server
+npx jest       # 41 tests
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+### Database migrations
+Run automatically on server start. To run manually:
+```bash
+cd codethium-ai-web/server && node db/migrate.js
+```

@@ -5,6 +5,7 @@ const authMiddleware = require('../middleware/auth');
 const { getProvider } = require('../services/llm');
 const { extractText } = require('../services/fileParser');
 const { searchDocuments } = require('../services/rag');
+const { needsWebSearch, searchWeb } = require('../services/webSearch');
 
 const { streamLimiter } = require('../middleware/rateLimit');
 
@@ -75,6 +76,8 @@ router.post('/stream', authMiddleware, streamLimiter, async (req, res) => {
         : msg
     );
 
+    let webSearchUsed = false;
+
     // RAG: inject relevant document context when no inline attachments
     if (!attachments?.length) {
       const ragChunks = await searchDocuments(req.userId, content, 4);
@@ -89,11 +92,34 @@ router.post('/stream', authMiddleware, streamLimiter, async (req, res) => {
       }
     }
 
+    // Web search: inject live results for time-sensitive queries
+    if (!attachments?.length && needsWebSearch(content)) {
+      try {
+        const webResults = await searchWeb(content, 5);
+        if (webResults.length > 0) {
+          const webContext = webResults
+            .map(r => `[${r.title}](${r.url})\n${r.snippet}`)
+            .join('\n\n---\n\n');
+          messagesForLLM.unshift({
+            role: 'system',
+            content: `Current web search results for "${content}":\n\n${webContext}\n\nUse these results to give an accurate, up-to-date answer.`,
+          });
+          webSearchUsed = true;
+        }
+      } catch (err) {
+        console.error('Web search error (non-fatal):', err.message);
+      }
+    }
+
     // SSE headers
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders();
+
+    if (webSearchUsed) {
+      res.write(`event: info\ndata: ${JSON.stringify({ message: 'Searching the web for current information\u2026' })}\n\n`);
+    }
 
     // Auto-route image/PDF attachments to a multimodal-capable model
     const MULTIMODAL_MODELS = ['gemini', 'gemma'];
