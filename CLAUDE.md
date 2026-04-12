@@ -46,6 +46,7 @@ Single `.env` at repo root (`AI-Chatbot/.env`) — used by both docker-compose a
 
 ```
 PORT=4000
+CORS_ORIGIN=http://localhost:3000
 DB_HOST=postpres       # Docker service name; use "localhost" for local dev
 DB_PORT=5433           # use 5432 for default local Postgres
 DB_USER=SE
@@ -74,35 +75,40 @@ REACT_APP_API_URL=http://localhost:4000
 ## Architecture
 
 ### Request Flow
-1. User logs in via `src/components/LoginPage.js` → `POST /api/login` (httpOnly cookie)
-2. Auth state managed by `src/context/AuthContext.js` (rehydrates via `GET /api/me` on refresh)
+1. User logs in via `src/components/LoginPage.js` → `POST /api/login` → sets `token` (15 min) + `refresh_token` (7 day) httpOnly cookies
+2. Auth state managed by `src/context/AuthContext.js` (rehydrates via `GET /api/me` on refresh; 401 interceptor auto-calls `POST /api/refresh`)
 3. User sends message in `src/components/chat/ChatPage.js`
 4. `src/services/streamChat.js` POSTs to `POST /api/chats/stream`
-5. Express authenticates, loads history from DB, calls LLM provider (OpenRouter / Groq / Local)
+5. Express: RAG search → prepend relevant document snippets as system message → call LLM provider
 6. LLM response streams back as SSE (`event: token`), saved to `messages` table on completion
 
 ### Backend Structure (`codethium-ai-web/server/`)
 ```
 server/
-  index.js               — entry point with helmet, CORS, morgan
-  config/index.js        — env validation, fail-fast
+  app.js                 — Express app setup (no listen — importable for tests)
+  index.js               — entry point: runMigrations() + app.listen()
+  config/index.js        — env validation, fail-fast; includes CORS_ORIGIN
   db/
     pool.js              — pg Pool singleton
     migrate.js           — sequential migration runner (idempotent)
     migrations/
       001_initial.sql    — users + chats tables
       002_messages_table.sql — normalized messages table
+      003_attachments.sql   — GIN index on messages.metadata JSONB
+      004_documents.sql     — documents table (RAG): content_fts tsvector + GIN index
+      005_refresh_tokens.sql — refresh_tokens table for JWT refresh pattern
   middleware/
     auth.js              — JWT verify (httpOnly cookie or Bearer header)
     errorHandler.js      — centralized error handler
     rateLimit.js         — express-rate-limit (auth: 15/min, stream: 60/min, upload: 30/min)
   routes/
-    auth.js              — /api/register, /login, /logout, /me, /change-password
-    chat.js              — CRUD /api/chats + POST /api/chats/stream (SSE) + GET /:id/messages
-    upload.js            — POST /api/upload/image (→ base64 data URL), /api/upload/file (→ extracted text)
+    auth.js              — /api/register (Zod, 12-char password), /login, /refresh, /logout, /me, /change-password
+    chat.js              — CRUD /api/chats + POST /api/chats/stream (SSE + RAG injection) + GET /:id/messages
+    upload.js            — POST /api/upload/image (→ base64 data URL), /api/upload/file (→ text + RAG store)
   services/
-    fileParser.js        — PDF text extraction (pdf-parse) + UTF-8 text files, 8000 char limit
-    formatLocalResponse.js — heuristic Python formatter for local model output; splits flat code, infers indentation, wraps in ```python fences
+    fileParser.js        — extractText() (8K truncated, for inline LLM context) + extractFullText() (for RAG)
+    formatLocalResponse.js — heuristic Python formatter for local model output
+    rag.js               — storeDocument() + searchDocuments() (PostgreSQL FTS via plainto_tsquery)
     llm/
       BaseLLMProvider.js   — abstract base class
       OpenAICompatibleProvider.js — shared OpenAI-format fetch + SSE parsing; _readSSEStream()
@@ -111,7 +117,13 @@ server/
       LocalModelProvider.js — FastAPI /chat endpoint; applies formatLocalResponse() on reply
       GeminiProvider.js    — generativelanguage.googleapis.com OpenAI-compat; chatStreamMultimodal() for images + PDFs
       index.js             — factory: getProvider("openrouter"|"groq"|"local"|"gemini")
-  utils/token.js         — signToken helper
+  utils/token.js         — signAccessToken() (15 min JWT), signRefreshToken() (random hex), hashToken() (SHA-256)
+  __tests__/
+    auth.test.js         — register/login/refresh/logout/change-password (mocks pool + bcrypt)
+    chat.test.js         — chat CRUD + SSE stream (mocks pool + rag + llm)
+    llm.test.js          — provider factory + _readSSEStream parsing (mocks fetch)
+  jest.config.js         — test environment, setupFiles, testTimeout
+  jest.setup.js          — sets required env vars before module load
 ```
 
 ### Frontend Structure (`codethium-ai-web/src/`)
@@ -154,19 +166,23 @@ src/
 -- users: id, username (unique), email (unique), password_hash, created_at
 -- chats: id, user_id (FK), title, message JSONB, created_at, updated_at
 -- messages: id, chat_id (FK), role ('user'|'assistant'|'system'), content, metadata JSONB, created_at
+-- documents: id, user_id (FK), chat_id (FK nullable), filename, content TEXT, content_fts tsvector (generated), created_at
+-- refresh_tokens: id, user_id (FK), token_hash TEXT (unique), expires_at, created_at
 -- schema_migrations: filename, applied_at
 ```
 
-### File & Image Upload (Phase 5)
+### File & Image Upload + RAG (Phases 5 + 9)
 
 Two-step flow: files uploaded first via `POST /api/upload/*`, payload returned to client, then included in the stream request body.
 
 - **Images** → base64 data URL → auto-routed to `GeminiProvider.chatStreamMultimodal()` (overrides selected model)
-- **PDFs** → base64 data URL (native PDF) → auto-routed to Gemini for native PDF understanding
-- **Text/code files** → extracted text (UTF-8) → injected as context prefix before the user's question in `POST /api/chats/stream`
+- **PDFs** → base64 data URL (native PDF) → auto-routed to Gemini; full text also stored in `documents` table for RAG
+- **Text/code files** → extracted text (8K truncated) returned to client for inline LLM context; full text stored in `documents` table for RAG
 - Only `{type, name}` written to `messages.metadata` — the base64 payload is never stored in the DB
 - `express.json()` body limit is `10mb` to accommodate base64 payloads
 - multer: `memoryStorage`, 5MB file size cap, scoped error handler in `upload.js`
+
+**RAG flow:** On `POST /api/chats/stream` with no attachments, `searchDocuments(userId, content, 4)` runs a PostgreSQL FTS query (`plainto_tsquery`) against the user's stored documents. Any matching snippets are prepended as an ephemeral system message (not persisted to DB).
 
 ### LLM Streaming (SSE)
 ```
@@ -191,6 +207,6 @@ Automatic 429 fallback: OpenRouter ↔ Groq.
 | Phase 6 — Chat UX Polish | ✅ Done | Auto-title, rename, date grouping, search |
 | Phase 7 — Gemini Multimodal Provider | ✅ Done | GeminiProvider, image+PDF upload, auto-route to Gemini |
 | Phase 8 — Frontend UI Overhaul | ✅ Done | Tailwind + Framer Motion, light/dark theme, local model formatting |
-| Phase 9 — Production Hardening | 🔲 Pending | RAG (PostgreSQL FTS), Jest tests, deployment |
+| Phase 9 — Production Hardening | ✅ Done | CORS from env, password strength (12+ chars), JWT refresh tokens, RAG (PostgreSQL FTS), Jest tests (41 tests) |
 
 See `implementation_plan.md` for detailed task lists and file paths per phase.

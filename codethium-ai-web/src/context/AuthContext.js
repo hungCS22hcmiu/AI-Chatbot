@@ -14,6 +14,35 @@ export function AuthProvider({ children }) {
       .finally(() => setLoading(false));
   }, []);
 
+  // Auto-refresh access token on 401: try POST /api/refresh, then retry.
+  // If refresh also fails, force logout.
+  useEffect(() => {
+    const interceptor = api.interceptors.response.use(
+      response => response,
+      async error => {
+        const original = error.config;
+        const url = original?.url || '';
+        if (
+          error.response?.status === 401 &&
+          !original._retry &&
+          !url.includes('/api/refresh') &&
+          !url.includes('/api/login') &&
+          !url.includes('/api/logout')
+        ) {
+          original._retry = true;
+          try {
+            await api.post('/api/refresh');
+            return api(original);
+          } catch {
+            setUser(null); // force logout on failed refresh
+          }
+        }
+        return Promise.reject(error);
+      }
+    );
+    return () => api.interceptors.response.eject(interceptor);
+  }, []);
+
   const login = (userData) => setUser(userData);
 
   const logout = async () => {

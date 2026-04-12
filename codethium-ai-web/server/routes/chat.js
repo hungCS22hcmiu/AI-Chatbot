@@ -4,6 +4,7 @@ const pool = require('../db/pool');
 const authMiddleware = require('../middleware/auth');
 const { getProvider } = require('../services/llm');
 const { extractText } = require('../services/fileParser');
+const { searchDocuments } = require('../services/rag');
 
 const { streamLimiter } = require('../middleware/rateLimit');
 
@@ -17,7 +18,7 @@ const attachmentSchema = z.object({
 
 const streamSchema = z.object({
   chatId: z.number().int().positive(),
-  content: z.string().min(1),
+  content: z.string().min(1).max(10000).trim(),
   model: z.enum(['openrouter', 'groq', 'local', 'gemini']).optional(),
   attachments: z.array(attachmentSchema).max(5).optional(),
 });
@@ -73,6 +74,20 @@ router.post('/stream', authMiddleware, streamLimiter, async (req, res) => {
         ? { ...msg, content: userContentForLLM }
         : msg
     );
+
+    // RAG: inject relevant document context when no inline attachments
+    if (!attachments?.length) {
+      const ragChunks = await searchDocuments(req.userId, content, 4);
+      if (ragChunks.length > 0) {
+        const ragContext = ragChunks
+          .map(c => `[${c.filename}]\n${c.snippet}`)
+          .join('\n\n---\n\n');
+        messagesForLLM.unshift({
+          role: 'system',
+          content: `Relevant context from uploaded documents:\n\n${ragContext}`,
+        });
+      }
+    }
 
     // SSE headers
     res.setHeader('Content-Type', 'text/event-stream');

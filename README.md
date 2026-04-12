@@ -1,209 +1,185 @@
-[![Python](https://img.shields.io/badge/Python-%233776AB.svg?style=flat-square&logo=python&logoColor=white)]()
-[![React](https://img.shields.io/badge/React-%2320232a.svg?style=flat-square&logo=react&logoColor=%2361DAFB)]()
+[![React](https://img.shields.io/badge/React-19-%2320232a.svg?style=flat-square&logo=react&logoColor=%2361DAFB)]()
 [![Node.js](https://img.shields.io/badge/Node.js-%23339933.svg?style=flat-square&logo=node.js&logoColor=white)]()
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-%23336791.svg?style=flat-square&logo=postgresql&logoColor=white)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-# CodeThium AI: Code On! 
+# CodeThium AI
 
-  <img width="600" height="auto" alt="lgo" src="https://github.com/user-attachments/assets/08b63c6d-29ea-45a3-85f9-577decc420f0" />
+A full-stack AI chatbot with hybrid LLM support, file/image uploads, RAG via PostgreSQL full-text search, and a polished Tailwind + Framer Motion UI.
 
+---
 
+## Features
 
-## Description 📝
+- **Multi-provider LLM** — OpenRouter, Groq, Google Gemini, and a custom-trained local Python code model
+- **Token streaming** — Server-Sent Events (SSE) with automatic 429 fallback between OpenRouter and Groq
+- **File & image uploads** — Images and PDFs routed to Gemini for native multimodal understanding; text/code files extracted as context
+- **RAG** — Uploaded documents stored with PostgreSQL `tsvector` full-text search; relevant excerpts automatically injected as LLM context
+- **Auth** — JWT access tokens (15 min) + opaque refresh tokens (7 days, hashed in DB)
+- **Light/dark theme** — persisted to localStorage, toggleable from sidebar
+- **Chat UX** — auto-title, rename, date grouping, sidebar search
 
-CodeThium is a **web-based AI coding assistant** powered by a **Transformer decoder-only model** trained from scratch . It is trained on the **MBPP dataset** and a **custom dataset (~1000 code examples)** due to Colab GPU limits. The project demonstrates **end-to-end ML deployment**: model training → backend API → frontend web interface.
+---
 
-1.  [Features](#features-%EF%B8%8F)
-2.  [Tech Stack](#tech-stack-%EF%B8%8F)
-3.  [Installation](#installation-%EF%B8%8F)
-4.  [Usage](#usage-%EF%B8%8F)
-5.  [How to use](#how-to-use-%EF%B8%8F)
-6.  [Project Structure](#project-structure-%EF%B8%8F)
-7.  [API Reference](#api-reference-%EF%B8%8F)
-8.  [Contributing](#contributing-%EF%B8%8F)
-9.  [License](#license-%EF%B8%8F)
-10. [Important Links](#important-links-%EF%B8%8F)
-11. [Footer](#footer-%EF%B8%8F)
+## Architecture
 
-## Features ✨
-
-*   **AI-Powered Chatbot:** Interact with an AI assistant to generate code snippets and receive coding assistance. 🤖
-*   **User Authentication:** Secure user registration and login using bcrypt and JWT. 🔒
-*   **Chat History:** Save and manage chat history with titles and message previews. 💬
-*   **Password Management:** Users can change their passwords securely. 🔑
-*   **Real-time Code Generation:** Backend API using FastAPI and a PyTorch model to generate code. 🐍
-*   **Interactive UI:** Built using React with features like message loading indicators, auto-resize input, and settings modal. 🎨
-
-## Tech Stack 💻
-
-*   **Frontend:** React, JavaScript, CSS, HTML, Next.js, Bootstrap ⚛️
-*   **Backend:** Node.js, Express, JavaScript, FastAPI ⚙️
-*   **Database:** PostgreSQL 🐘
-*   **AI Model:** Python, PyTorch, Transformer 🧠
-*   **Other:** dotenv, cors, cookie-parser 🛠️
-
-## Installation 🛠️
-
-To run CodeThium AI, follow these steps:
-
-### 1. Clone the repository ⬇️
-
-```bash
-git clone https://github.com/dangnguyengroup23/CodeThium
-cd CodeThium
+```
+Browser (React 19 + Tailwind + Framer Motion)
+    │  httpOnly cookie (JWT)
+    ▼
+Express 5 (port 4000)
+    ├─ POST /api/chats/stream ──► LLM Provider (SSE)
+    │                               ├─ OpenRouter  (google/gemma-3-27b-it:free)
+    │                               ├─ Groq        (llama-3.3-70b-versatile)
+    │                               ├─ Gemini      (gemini-2.5-flash) — images + PDFs
+    │                               └─ Local Model (FastAPI, port 8000)
+    ├─ POST /api/upload/*  ──► fileParser.js ──► RAG: documents table
+    └─ DB layer (pg Pool) ──► PostgreSQL 16 (port 5433)
 ```
 
-### 2. Install frontend dependencies 📦
+**Request flow:**
+1. User sends message → `POST /api/chats/stream`
+2. Express checks RAG: searches `documents` table for relevant chunks via `plainto_tsquery`
+3. Relevant snippets prepended as a system message
+4. LLM streams response back as SSE tokens
+5. Completed response saved to `messages` table
+
+---
+
+## Quick Start (Docker — recommended)
 
 ```bash
-cd codethium-ai-web
-npm install
+# 1. Copy env template and fill in your API keys
+cp .env.example .env
+
+# 2. Build and start all services
+docker-compose up --build
+
+# 3. Open browser
+open http://localhost:3000
 ```
 
-### 3. Install backend dependencies ⚙️
+Migrations run automatically on first start.
 
-```bash
-cd server
-npm install
-```
+---
 
-### 4. Configure PostgreSQL database 🐘
+## Local Development
 
-*   Ensure PostgreSQL is installed and running.
-*   Create a database named `codethium`.
-*   Update the database connection details in the `server/.env` file:
-
-    ```
-    DB_HOST=localhost
-    DB_PORT=5432
-    DB_USER=postgres
-    DB_PASSWORD=your_password
-    DB_NAME=codethium
-    JWT_SECRET=your_jwt_secret
-    ```
-
-### 5. Configure Environment Variables ⚙️
-
-*   Create a `.env` file in the `server` directory.
-*   Add the necessary environment variables:
-
-    ```
-    PORT=4000
-    DB_HOST=localhost
-    DB_PORT=5432
-    DB_USER=your_db_user
-    DB_PASSWORD=your_db_password
-    DB_NAME=your_db_name
-    JWT_SECRET=your_jwt_secret
-    ```
-
-### 6. Install Python dependencies for the AI model 🐍
-
-```bash
-pip install -r requirements.txt
-```
-
-## Usage 🚀
-
-### 1. Start the backend server ⚙️
+### Backend
 
 ```bash
 cd codethium-ai-web/server
-npm start server
+npm install
+npm run dev          # nodemon at http://localhost:4000
 ```
 
-This will start the Node.js server with nodemon, which automatically restarts the server on file changes.
-
-### 2. Start the frontend application ⚛️
+### Frontend
 
 ```bash
 cd codethium-ai-web
-npm start
+npm install
+npm start            # CRA dev server at http://localhost:3000
 ```
 
-This command will start the React application in development mode.
+Create `codethium-ai-web/.env`:
+```
+REACT_APP_API_URL=http://localhost:4000
+```
 
-### 3. Run the AI model (FastAPI) 🐍
+### Run Tests
 
 ```bash
-cd codethium-model
-python decoder_only_model.py
+cd codethium-ai-web/server
+npm test             # jest --coverage (41 tests, no DB required)
 ```
 
-This will start the FastAPI server, which serves the AI model.
+---
 
-### 4. Access the application 🌐
+## Environment Variables
 
-Open your browser and navigate to `http://localhost:3000` to access the CodeThium AI application. You can then log in or sign up to start using the AI coding assistant.
+Single `.env` at repo root. See `.env.example` for the full template.
 
-## How to use 💡
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DB_HOST` | Yes | Postgres host (`postpres` in Docker, `localhost` locally) |
+| `DB_PORT` | Yes | Postgres port (`5433` in Docker, `5432` locally) |
+| `DB_USER` | Yes | Postgres user |
+| `DB_PASSWORD` | Yes | Postgres password |
+| `DB_NAME` | Yes | Database name (`codethium`) |
+| `JWT_SECRET` | Yes | Min 32 chars random string |
+| `CORS_ORIGIN` | No | Allowed origin (default `http://localhost:3000`; comma-separate for multiple) |
+| `LLM_PROVIDER` | No | Default provider: `openrouter`, `groq`, `local`, or `gemini` |
+| `OPENROUTER_API_KEY` | No | [openrouter.ai](https://openrouter.ai) API key |
+| `OPENROUTER_MODEL` | No | Default: `google/gemma-3-27b-it:free` |
+| `GROQ_API_KEY` | No | [groq.com](https://console.groq.com) API key |
+| `GROQ_MODEL` | No | Default: `llama-3.3-70b-versatile` |
+| `GEMINI_API_KEY` | No | [Google AI Studio](https://aistudio.google.com) API key — required for image/PDF uploads |
+| `GEMINI_MODEL` | No | Default: `gemini-2.5-flash` |
+| `LOCAL_MODEL_URL` | No | FastAPI endpoint (default `http://local-model:8000`) |
 
-1.  **Sign Up/Log In**: Start by creating an account or logging in with your existing credentials. You can also use social login options like Google, Apple, or Microsoft (will update). 🔑
-2.  **Start a New Chat**: Click on the "New Chat" button to start a new conversation with the AI assistant. 💬
-3.  **Interact with the AI**: Type your coding-related questions or prompts in the input area and send them to the AI. 🤖
-4.  **Receive Code Suggestions**: The AI will process your input and generate code snippets or suggestions to assist you with your coding tasks. 💡
-5.  **Manage Chat History**: Your previous chats are saved in the chat history sidebar. You can revisit them anytime to review or continue the conversation. 📚
-6.  **Change Password**: Go to Settings and click change password button. 🔑
+---
 
-**Example Use Cases**
+## API Endpoints
 
-*   Code generation from natural language descriptions.
-*   Debugging and error identification.
-*   Learning new programming languages and techniques.
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/register` | — | Create account (12+ char password required) |
+| POST | `/api/login` | — | Login → sets `token` + `refresh_token` cookies |
+| POST | `/api/refresh` | — | Issue new access token from refresh cookie |
+| POST | `/api/logout` | Yes | Clear cookies + delete refresh token from DB |
+| GET | `/api/me` | Yes | Current user info |
+| POST | `/api/change-password` | Yes | Change password (12+ char strength validation) |
+| GET | `/api/chats` | Yes | List user's chats |
+| POST | `/api/chats` | Yes | Create chat |
+| PUT | `/api/chats/:id` | Yes | Update chat title/messages |
+| DELETE | `/api/chats/:id` | Yes | Delete chat |
+| GET | `/api/chats/:id/messages` | Yes | Fetch message history |
+| POST | `/api/chats/stream` | Yes | Stream LLM response (SSE) |
+| POST | `/api/upload/image` | Yes | Upload image → base64 data URL |
+| POST | `/api/upload/file` | Yes | Upload PDF/text → extracted text (also stored for RAG) |
 
-## Project Structure 📁
+---
+
+## Database Schema
+
+```sql
+users       — id, username, email, password_hash, created_at
+chats       — id, user_id, title, message JSONB, created_at, updated_at
+messages    — id, chat_id, role, content, metadata JSONB, created_at
+documents   — id, user_id, chat_id, filename, content, content_fts (tsvector), created_at
+refresh_tokens — id, user_id, token_hash, expires_at, created_at
+```
+
+---
+
+## Project Structure
 
 ```
-CodeThium/
-├── codethium-ai-web/          # React frontend
-│   ├── public/                # Public assets
-│   ├── src/                   # Source code
-│   │   ├── components/        # React components
-│   │   │   ├── ChatbotPage.js # Chatbot interface
-│   │   │   ├── LoginPage.js   # Login page
-│   │   ├── App.js             # Main application component
-│   │   ├── index.js           # Entry point
-│   ├── package.json           # Frontend dependencies
-│   ├── README.md
-├── server/                  # Node.js/Express backend
-│   ├── index.js           # Server entry point
-│   ├── package.json           # Backend dependencies
-│   ├── .env                   # Environment variables
-├── codethium-model/           # Python AI model
-│   ├── decoder_only_model.py  # FastAPI application
-│   ├── model_components.py    # Model components and training utilities
-│   ├── train_model.py       # Model training script
-│   ├── fullspm.model          # SentencePiece model
-│   ├── vocab.pth              # Vocabulary
+AI-Chatbot/
+├── codethium-ai-web/
+│   ├── server/                    Express backend
+│   │   ├── app.js                 Express app (no listen — importable for tests)
+│   │   ├── index.js               Entry point: runs migrations + starts server
+│   │   ├── config/index.js        Env validation, fail-fast
+│   │   ├── db/                    Pool, migrations (001–005)
+│   │   ├── middleware/            auth, errorHandler, rateLimit
+│   │   ├── routes/                auth, chat, upload
+│   │   ├── services/
+│   │   │   ├── llm/               OpenRouter, Groq, Gemini, Local providers
+│   │   │   ├── rag.js             PostgreSQL FTS document storage + search
+│   │   │   └── fileParser.js      PDF + text extraction
+│   │   └── __tests__/             Jest + Supertest (41 tests)
+│   └── src/                       React 19 frontend
+│       ├── context/               AuthContext (+ refresh interceptor), ThemeContext
+│       ├── services/              api.js (Axios), streamChat.js (SSE)
+│       └── components/chat/       ChatPage, Sidebar, MessageList, ChatInput, ...
+├── codethium-model/               FastAPI local model (Python decoder-only transformer)
+├── docker-compose.yml
+└── .env.example
 ```
 
-## API Reference 📚
+---
 
-The backend server exposes the following API endpoints:
+## License
 
-*   `POST /api/register`: Registers a new user. 📝
-*   `POST /api/login`: Logs in an existing user. 🔑
-*   `GET /api/me`: Retrieves the current user's information. 👤
-*   `POST /api/logout`: Logs out the current user. 🚪
-*   `POST /api/change-password`: Changes the current user's password. 🔄
-*   `POST /api/chats`: Saves a new chat. 💬
-*   `GET /api/chats`: Retrieves all chats for the current user. 💬
-*   `PUT /api/chats/:id`: Updates an existing chat. ✏️
-*   `DELETE /api/chats/:id`: Deletes a chat. 🗑️
-*   `POST /chat`: Generates AI chat reply. 💬
-
-
-## License ⚖️
-
-This project is licensed under the MIT License - see the [LICENSE](https://opensource.org/licenses/MIT) file for details.
-
-## Important Links 🔗
-
-*   **GitHub Repository:** [https://github.com/dangnguyengroup23/CodeThium](https://github.com/dangnguyengroup23/CodeThium)
-*   **Author's LinkedIn:** [https://www.linkedin.com/in/huong-dang-a19115303/](https://www.linkedin.com/in/huong-dang-a19115303/)
-*   **Discord:** [https://discord.gg/codethium](https://discord.gg/codethium)
-
-## Footer 👣
-
-CodeThium AI - [https://github.com/dangnguyengroup23/CodeThium](https://github.com/dangnguyengroup23/CodeThium) by Huong Dang. ✨
-
+MIT

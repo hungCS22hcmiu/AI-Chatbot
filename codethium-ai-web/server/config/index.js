@@ -26,6 +26,7 @@ const config = {
   LOCAL_MODEL_URL: process.env.LOCAL_MODEL_URL || 'http://localhost:8000',
   GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
   GEMINI_MODEL: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+  CORS_ORIGIN: process.env.CORS_ORIGIN || 'http://localhost:3000',
 };
 
 module.exports = config;
