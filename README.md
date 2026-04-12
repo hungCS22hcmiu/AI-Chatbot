@@ -17,8 +17,9 @@ A full-stack AI chatbot with hybrid LLM support, file/image uploads, RAG via Pos
 - **RAG** — Uploaded documents stored with PostgreSQL `tsvector` full-text search; relevant excerpts automatically injected as LLM context
 - **Real-time web search** — Automatically searches the web (via Tavily) when queries contain time-sensitive keywords (weather, news, prices, etc.)
 - **Thought-block filtering** — Strips `<thought>…</thought>` reasoning from Gemma responses, showing only the final answer
-- **Auth** — JWT access tokens (15 min) + opaque refresh tokens (7 days, hashed in DB)
-- **Light/dark theme** — persisted to localStorage, toggleable from sidebar
+- **Auth** — JWT access tokens (15 min) + opaque refresh tokens (7 days, hashed in DB); SSE stream silently refreshes expired tokens and shows a "Session Expired" modal when the refresh token is also gone
+- **Settings modal** — full-page overlay with profile card, light/dark theme toggle, per-model radio selector, collapsible change-password form, and sign-out
+- **Light/dark theme** — persisted to localStorage, toggleable from the Settings modal
 - **Chat UX** — auto-title, rename, date grouping, sidebar search
 - **Optimized Docker images** — Local model uses ONNX Runtime instead of PyTorch (995 MB → 408 MB)
 

@@ -78,9 +78,9 @@ REACT_APP_API_URL=http://localhost:4000
 
 ### Request Flow
 1. User logs in via `src/components/LoginPage.js` → `POST /api/login` → sets `token` (15 min) + `refresh_token` (7 day) httpOnly cookies
-2. Auth state managed by `src/context/AuthContext.js` (rehydrates via `GET /api/me` on refresh; 401 interceptor auto-calls `POST /api/refresh`)
+2. Auth state managed by `src/context/AuthContext.js` (rehydrates via `GET /api/me` on refresh; 401 interceptor auto-calls `POST /api/refresh`; `forceLogout()` sets `sessionExpired` state to show modal)
 3. User sends message in `src/components/chat/ChatPage.js`
-4. `src/services/streamChat.js` POSTs to `POST /api/chats/stream`
+4. `src/services/streamChat.js` POSTs to `POST /api/chats/stream`; on 401 silently calls `POST /api/refresh` and retries; calls `onAuthError` (→ `forceLogout`) if refresh also fails
 5. Express: RAG search → web search (if time-sensitive query + TAVILY_API_KEY set) → prepend context as system messages → call LLM provider
 6. LLM response streams back as SSE (`event: token`), saved to `messages` table on completion
 
@@ -134,7 +134,7 @@ server/
 ```
 src/
   context/
-    AuthContext.js           — user state, login/logout, cookie rehydration
+    AuthContext.js           — user state, login/logout, cookie rehydration; forceLogout() + sessionExpired state for expired-session modal
     ThemeContext.js          — light/dark theme state; persists to localStorage; sets data-theme on <html>
   services/
     api.js                   — Axios instance (baseURL from env, withCredentials)
@@ -146,14 +146,14 @@ src/
       Spinner.js             — Lucide Loader2 spinner
     chat/
       ChatPage.js            — top-level composition
-      ChatSidebar.js         — chat history list, new/delete, Sun/Moon theme toggle
+      ChatSidebar.js         — chat history list, new/delete chat; Settings icon in footer
       MessageList.js         — scrollable area, auto-scroll, AnimatePresence
       MessageBubble.js       — gradient user bubble, glass assistant bubble, Lucide avatars
       MessageContent.js      — react-markdown + syntax highlighting (prose prose-invert)
       ChatInput.js           — textarea, model selector, send button, file upload
       FileUploadButton.js    — Lucide ImageIcon/Paperclip upload buttons
       ImagePreview.js        — attachment thumbnail strip with AnimatePresence
-      SettingsPanel.js       — logout, password change, Framer Motion entrance
+      SettingsPanel.js       — full-screen modal: profile card, theme toggle, model radio list, change password (collapsible), sign-out
 ```
 
 ### Design System (Phase 8)
@@ -163,7 +163,7 @@ src/
 - **Dark theme (default):** surfaces `#0b0b14`/`#13131f`/`#1c1c2e`/`#252538`
 - **Light theme:** surfaces `#f4f4f8`/`#eaeaf2`/`#e0e0ec`/`#d5d5e4`; toggled via `html[data-theme="light"]`
 - **Glass utility:** `.glass` = `bg-white/5 backdrop-blur-xl border border-white/10`; overridden to `rgba(0,0,0,0.03)` in light mode
-- **Theme toggle:** Sun/Moon button in sidebar bottom bar; preference saved to `localStorage`
+- **Theme toggle:** Pill toggle switch inside the Settings modal (Moon/Sun icon inside thumb); preference saved to `localStorage`
 
 ### Database Schema
 ```sql
@@ -216,5 +216,6 @@ Automatic 429 fallback: OpenRouter ↔ Groq.
 | Phase 9 — Production Hardening | ✅ Done | CORS from env, password strength (12+ chars), JWT refresh tokens, RAG (PostgreSQL FTS), Jest tests (41 tests) |
 | Phase 10 — Gemma + Web Search | ✅ Done | Gemma 4 31B provider, thought-block filtering, Tavily web search with keyword heuristic |
 | Phase 11 — Docker Optimization | ✅ Done | Local model: PyTorch→ONNX Runtime (995 MB→408 MB); .dockerignore for model artifacts |
+| Phase 12 — Auth UX + Settings Redesign | ✅ Done | SSE 401 auto-refresh + session-expired modal; Settings redesigned as full-screen modal (profile, theme toggle, model radio list, change password, sign-out) |
 
 See `implementation_plan.md` for detailed task lists and file paths per phase.
