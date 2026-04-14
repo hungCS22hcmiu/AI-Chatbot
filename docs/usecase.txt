@@ -1,0 +1,102 @@
+## Use Cases for CodeThium AI Chatbot
+
+This document outlines the primary use cases supported by the CodeThium AI Chatbot application.
+
+### User Management and Authentication
+1.  **User Registration:** A new user can create an account with a username, email, and a password (minimum 12 characters).
+2.  **User Login:** An existing user can log in using their credentials to access the application.
+3.  **Session Refresh:** The system automatically refreshes expired access tokens using a refresh token to maintain an active user session.
+4.  **User Logout:** A logged-in user can log out of their session, clearing cookies and invalidating their refresh token.
+5.  **User Profile Viewing:** A logged-in user can view their basic profile information.
+6.  **Password Change:** A logged-in user can change their password, with strong validation (minimum 12 characters).
+
+### Chat Functionality
+7.  **Initiate New Chat:** A user can start a new chat session.
+8.  **Send Text Message:** A user can send text messages to the AI chatbot.
+9.  **Receive AI Response (Streaming):** The user receives streamed responses from the selected LLM provider.
+10. **Chat Auto-Titling:** The system automatically generates a title for a new chat based on its content.
+11. **Rename Chat:** A user can rename an existing chat session.
+12. **View Chat History:** A user can view a list of their past chat sessions, grouped by date.
+13. **Search Chat History:** A user can search their chat history to find specific conversations.
+14. **Delete Chat:** A user can delete an existing chat session.
+
+### Multimodal and Advanced Input
+15. **Upload Image for Chat:** A user can upload an image, and the AI (Gemini or Gemma) will interpret it as part of the conversation.
+16. **Upload PDF/Text File for Context (RAG):** A user can upload PDF or text files, and their content will be extracted and stored for Retrieval-Augmented Generation (RAG).
+17. **RAG-based Information Retrieval:** The AI automatically searches uploaded documents for relevant information and injects it into the LLM context to answer user queries.
+18. **Real-time Web Search:** If a user's query contains time-sensitive keywords, the AI automatically performs a web search (via Tavily) to provide up-to-date information.
+
+### Customization and Preferences
+19. **Select LLM Provider:** A user can choose their preferred LLM provider (OpenRouter, Groq, Gemini, Gemma, Local Model) from available options.
+20. **Toggle Light/Dark Theme:** A user can switch between light and dark themes for the application interface, with their preference persisted.
+
+### System Operations
+21. **Backend API Interaction:** Frontend interacts with the Express backend via various API endpoints to perform all core functionalities.
+22. **Database Management:** The system manages chat data, user information, and document storage within a PostgreSQL database, including migrations.
+23. **Local LLM Inference:** The backend can utilize a local FastAPI model for LLM inference (ONNX Runtime).
+24. **Environment Configuration:** The application reads configuration from environment variables for database connections, API keys, and other settings.
+
+## Use Case Diagram
+
+```mermaid
+usecaseDiagram
+    actor User as "User"
+
+    rectangle "AI Chatbot System" {
+        usecase "Register Account" as Register
+        usecase "Login" as Login
+        usecase "Logout" as Logout
+        usecase "View Profile" as ViewProfile
+        usecase "Change Password" as ChangePassword
+        usecase "Session Refresh" as SessionRefresh
+
+        usecase "Start New Chat" as NewChat
+        usecase "Send Message" as SendMsg
+        usecase "Receive AI Response" as ReceiveResponse
+        usecase "Manage Chat (Rename/Delete)" as ManageChat
+        usecase "View Chat History" as ViewHistory
+        usecase "Search Chat History" as SearchHistory
+
+        usecase "Upload Image for Chat" as UploadImage
+        usecase "Upload Document for RAG" as UploadDoc
+        usecase "RAG-based Information Retrieval" as RAG
+        usecase "Real-time Web Search" as WebSearch
+
+        usecase "Select LLM Provider" as SelectLLM
+        usecase "Toggle Light/Dark Theme" as ToggleTheme
+
+        User --> Register
+        User --> Login
+        User --> Logout
+        User --> ViewProfile
+        User --> ChangePassword
+
+        User --> NewChat
+        User --> SendMsg
+        User --> ManageChat
+        User --> ViewHistory
+        User --> SearchHistory
+
+        User --> UploadImage
+        User --> UploadDoc
+
+        User --> SelectLLM
+        User --> ToggleTheme
+
+        SendMsg ..> ReceiveResponse : includes
+        ReceiveResponse ..> RAG : includes
+        ReceiveResponse ..> WebSearch : includes
+
+        Login <.. SessionRefresh : extends
+        SendMsg <.. SessionRefresh : extends
+        ManageChat <.. SessionRefresh : extends
+        ViewHistory <.. SessionRefresh : extends
+        SearchHistory <.. SessionRefresh : extends
+        UploadImage <.. SessionRefresh : extends
+        UploadDoc <.. SessionRefresh : extends
+        ViewProfile <.. SessionRefresh : extends
+        ChangePassword <.. SessionRefresh : extends
+        SelectLLM <.. SessionRefresh : extends
+        ToggleTheme <.. SessionRefresh : extends
+    }
+```

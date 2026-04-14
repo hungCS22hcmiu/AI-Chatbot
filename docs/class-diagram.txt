@@ -1,0 +1,93 @@
+classDiagram
+    direction LR
+
+    class ExpressApp {
+        -router
+        +init()
+        +start()
+    }
+
+    class AuthRoutes {
+        +register()
+        +login()
+        +logout()
+        +changePassword()
+        +me()
+    }
+
+    class ChatRoutes {
+        +createChat()
+        +getChats()
+        +getMessages()
+        +streamLLMResponse()
+    }
+
+    class UploadRoutes {
+        +uploadImage()
+        +uploadFile()
+    }
+
+    class AuthMiddleware {
+        +verifyJWT()
+        +checkPermissions()
+    }
+
+    class BaseLLMProvider {
+        <<abstract>>
+        +callLLM(messages): Stream
+    }
+
+    class GeminiProvider
+    class GemmaProvider
+    class GroqProvider
+    class OpenRouterProvider
+    class OpenAICompatibleProvider
+    class LocalModelProvider
+
+    class RAGService {
+        +storeDocument(docContent)
+        +retrieveContext(query)
+    }
+
+    class WebSearchService {
+        +search(keywords)
+    }
+
+    class FileParserService {
+        +parsePDF(file)
+        +parseText(file)
+    }
+
+    class LocalModelFastAPI {
+        +predict(prompt, options)
+    }
+
+    class TavilyAPI {
+        +search(query)
+    }
+
+
+    ExpressApp ..> AuthRoutes : uses
+    ExpressApp ..> ChatRoutes : uses
+    ExpressApp ..> UploadRoutes : uses
+    ExpressApp ..> AuthMiddleware : applies
+
+    AuthRoutes -- AuthMiddleware : uses
+    ChatRoutes -- AuthMiddleware : uses
+    ChatRoutes -- RAGService : uses
+    ChatRoutes -- WebSearchService : uses
+    ChatRoutes -- BaseLLMProvider : orchestrates
+
+    UploadRoutes -- AuthMiddleware : uses
+    UploadRoutes -- FileParserService : uses
+
+    BaseLLMProvider <|-- GeminiProvider
+    BaseLLMProvider <|-- GemmaProvider
+    BaseLLMProvider <|-- GroqProvider
+    BaseLLMProvider <|-- OpenRouterProvider
+    BaseLLMProvider <|-- OpenAICompatibleProvider
+    BaseLLMProvider <|-- LocalModelProvider
+
+    LocalModelProvider -- LocalModelFastAPI : calls API
+
+    WebSearchService "1" -- "1" TavilyAPI : calls API

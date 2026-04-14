@@ -1,0 +1,60 @@
+usecaseDiagram
+    actor User as "User"
+
+    rectangle "AI Chatbot System" {
+        usecase "Register Account" as Register
+        usecase "Login" as Login
+        usecase "Logout" as Logout
+        usecase "View Profile" as ViewProfile
+        usecase "Change Password" as ChangePassword
+        usecase "Session Refresh" as SessionRefresh
+
+        usecase "Start New Chat" as NewChat
+        usecase "Send Message" as SendMsg
+        usecase "Receive AI Response" as ReceiveResponse
+        usecase "Manage Chat" as ManageChat
+        usecase "View Chat History" as ViewHistory
+        usecase "Search Chat History" as SearchHistory
+
+        usecase "Upload Image for Chat" as UploadImage
+        usecase "Upload Document for RAG" as UploadDoc
+        usecase "RAG-based Information Retrieval" as RAG
+        usecase "Real-time Web Search" as WebSearch
+
+        usecase "Select LLM Provider" as SelectLLM
+        usecase "Toggle Theme" as ToggleTheme
+
+        User --> Register
+        User --> Login
+        User --> Logout
+        User --> ViewProfile
+        User --> ChangePassword
+
+        User --> NewChat
+        User --> SendMsg
+        User --> ManageChat
+        User --> ViewHistory
+        User --> SearchHistory
+
+        User --> UploadImage
+        User --> UploadDoc
+
+        User --> SelectLLM
+        User --> ToggleTheme
+
+        SendMsg ..> ReceiveResponse : includes
+        ReceiveResponse ..> RAG : includes
+        ReceiveResponse ..> WebSearch : includes
+
+        Login <.. SessionRefresh : extends
+        SendMsg <.. SessionRefresh : extends
+        ManageChat <.. SessionRefresh : extends
+        ViewHistory <.. SessionRefresh : extends
+        SearchHistory <.. SessionRefresh : extends
+        UploadImage <.. SessionRefresh : extends
+        UploadDoc <.. SessionRefresh : extends
+        ViewProfile <.. SessionRefresh : extends
+        ChangePassword <.. SessionRefresh : extends
+        SelectLLM <.. SessionRefresh : extends
+        ToggleTheme <.. SessionRefresh : extends
+    }
