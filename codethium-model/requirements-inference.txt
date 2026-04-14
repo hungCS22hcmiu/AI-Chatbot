@@ -1,4 +1,3 @@
-onnxruntime
 sentencepiece
 fastapi
 uvicorn
