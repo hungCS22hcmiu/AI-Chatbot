@@ -4,7 +4,7 @@ const pool = require('../db/pool');
 const authMiddleware = require('../middleware/auth');
 const { getProvider } = require('../services/llm');
 const { extractText } = require('../services/fileParser');
-const { searchDocuments } = require('../services/rag');
+const { searchDocuments, isConversational } = require('../services/rag');
 const { needsWebSearch, searchWeb } = require('../services/webSearch');
 
 const { streamLimiter } = require('../middleware/rateLimit');
@@ -78,16 +78,16 @@ router.post('/stream', authMiddleware, streamLimiter, async (req, res) => {
 
     let webSearchUsed = false;
 
-    // RAG: inject relevant document context when no inline attachments
-    if (!attachments?.length) {
+    // RAG: inject relevant document context when no inline attachments and query has real intent
+    if (!attachments?.length && !isConversational(content)) {
       const ragChunks = await searchDocuments(req.userId, content, 4);
       if (ragChunks.length > 0) {
         const ragContext = ragChunks
-          .map(c => `[${c.filename}]\n${c.snippet}`)
+          .map(c => `[Source: ${c.filename}]\n${c.snippet}`)
           .join('\n\n---\n\n');
         messagesForLLM.unshift({
           role: 'system',
-          content: `Relevant context from uploaded documents:\n\n${ragContext}`,
+          content: `The following excerpts were retrieved from the user's uploaded documents and are relevant to the current question. Use them to give a grounded, accurate answer:\n\n${ragContext}`,
         });
       }
     }
