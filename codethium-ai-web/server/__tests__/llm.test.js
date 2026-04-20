@@ -147,3 +147,40 @@ describe('OpenAICompatibleProvider._readSSEStream()', () => {
     expect(chunks).toEqual(['OK']);
   });
 });
+
+describe('LocalModelProvider prompt building', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  test('sends retrieved context and recent turns to the local model', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ reply: 'def answer(): pass' }),
+    });
+
+    const provider = new LocalModelProvider();
+    const messages = [
+      { role: 'system', content: 'Relevant context from uploaded documents:\n\n[python.txt]\nUse binary search for sorted arrays.' },
+      { role: 'user', content: 'Earlier question' },
+      { role: 'assistant', content: 'Earlier answer' },
+      { role: 'user', content: 'Write Python code to search a sorted list quickly.' },
+    ];
+
+    const chunks = [];
+    for await (const chunk of provider.chatStream(messages)) {
+      chunks.push(chunk);
+    }
+
+    expect(chunks.join('')).toContain('```python');
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+
+    const [, options] = global.fetch.mock.calls[0];
+    const body = JSON.parse(options.body);
+
+    expect(body.message).toContain('Retrieved context:');
+    expect(body.message).toContain('Use binary search for sorted arrays.');
+    expect(body.message).toContain('Recent conversation:');
+    expect(body.message).toContain('User: Write Python code to search a sorted list quickly.');
+  });
+});
