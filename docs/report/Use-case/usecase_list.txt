@@ -1,0 +1,29 @@
+UC-1: Register Account
+Users can create a new account by providing a username, email, and a secure password.
+
+UC-2: User Login
+Existing users can authenticate themselves using their credentials to access their private chat history and settings.
+
+UC-3: Create New Chat Session
+Users can start a fresh conversation thread, which is saved and organized separately from other sessions.
+
+UC-4: Send Message and Stream AI Response
+Users can send text prompts to the AI and receive responses in real-time through a streaming interface.
+
+UC-5: Upload and Analyze Images
+Users can upload image files for the AI to process, allowing for visual question answering and image description.
+
+UC-6: Upload and Query PDF Documents
+Users can upload PDF files which are parsed and used as context for the AI to answer specific document-related questions.
+
+UC-7: Manage Chat History (Rename/Delete)
+Users can organize their workspace by renaming chat sessions for clarity or deleting old conversations.
+
+UC-8: Select AI Provider and Model
+Users can choose between different AI backends (e.g., Gemini, Groq, local models) based on their specific needs for speed or capability.
+
+UC-9: Perform Web Search for Real-time Info
+The system can automatically search the internet to provide the AI with up-to-date information for time-sensitive queries.
+
+UC-10: User Logout
+Users can securely end their session, clearing authentication tokens and protecting their account from unauthorized access.
