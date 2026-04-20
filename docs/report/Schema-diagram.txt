@@ -1,0 +1,68 @@
+## Schema Diagram
+
+The following Mermaid ER diagram describes the PostgreSQL database schema for CodeThium.
+There are 5 core tables:
+
+- **users** – stores registered accounts (unique username + email, hashed password).
+- **chats** – each chat session belongs to one user; legacy `message` JSONB column preserved alongside the normalised messages table.
+- **messages** – normalised message rows (user / assistant / system) linked to a chat; `metadata` JSONB holds attachment info, indexed with GIN.
+- **documents** – full text of uploaded files stored for RAG (Retrieval-Augmented Generation); `content_fts` is a generated tsvector column enabling PostgreSQL full-text search.
+- **refresh_tokens** – SHA-256-hashed JWT refresh tokens per user, used by the 15-min access / 7-day refresh token security pattern.
+
+```mermaid
+erDiagram
+    users {
+        int id PK
+        varchar username UK
+        varchar email UK
+        text password_hash
+        timestamptz created_at
+    }
+
+    chats {
+        int id PK
+        int user_id FK
+        varchar title
+        jsonb message
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    messages {
+        int id PK
+        int chat_id FK
+        varchar role
+        text content
+        jsonb metadata
+        timestamptz created_at
+    }
+
+    documents {
+        int id PK
+        int user_id FK
+        int chat_id FK
+        varchar filename
+        text content
+        tsvector content_fts
+        timestamptz created_at
+    }
+
+    refresh_tokens {
+        int id PK
+        int user_id FK
+        text token_hash UK
+        timestamptz expires_at
+        timestamptz created_at
+    }
+
+    schema_migrations {
+        varchar filename PK
+        timestamptz applied_at
+    }
+
+    users ||--o{ chats : "owns"
+    users ||--o{ documents : "uploads"
+    users ||--o{ refresh_tokens : "has"
+    chats ||--o{ messages : "contains"
+    chats ||--o{ documents : "associated with"
+```
