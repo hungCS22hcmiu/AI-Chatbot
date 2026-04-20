@@ -117,7 +117,7 @@ function ChatInput({ onSend, isStreaming, disabled }) {
           placeholder="Ask anything… (Enter to send, Shift+Enter for newline)"
           rows={1}
           className="flex-1 resize-none bg-surface-2 text-zinc-100 border border-white/10
-            rounded-xl px-3 py-2 text-sm leading-relaxed outline-none overflow-hidden
+            rounded-xl px-3 py-2 text-sm leading-relaxed outline-none overflow-y-auto
             placeholder:text-zinc-500
             focus:border-brand-primary/50 transition-colors
             disabled:opacity-60"
