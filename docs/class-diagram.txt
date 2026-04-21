@@ -1,0 +1,75 @@
+## Class Diagram – Backend (CodeThium Server)
+
+LLM provider hierarchy arranged left-to-right with namespace swimlanes
+grouping classes by responsibility layer.
+
+```mermaid
+classDiagram
+    direction LR
+
+    namespace Base {
+        class BaseLLMProvider {
+            <<abstract>>
+            +chat(messages) Promise
+            +chatStream(messages) AsyncGenerator
+            +getModelName() string
+        }
+    }
+
+    namespace OpenAI_Compatible {
+        class OpenAICompatibleProvider {
+            -baseURL string
+            -apiKey string
+            -model string
+            +chat(messages) Promise
+            +chatStream(messages) AsyncGenerator
+            +_readSSEStream(res) AsyncGenerator
+        }
+    }
+
+    namespace Cloud_Providers {
+        class GroqProvider {
+            +getModelName() string
+        }
+        class OpenRouterProvider {
+            +getModelName() string
+        }
+        class GeminiProvider {
+            +getModelName() string
+            +chatStreamMultimodal(history, attachments, userText) AsyncGenerator
+        }
+        class GemmaProvider {
+            +getModelName() string
+            +chatStream(messages) AsyncGenerator
+            +chatStreamMultimodal(history, attachments, userText) AsyncGenerator
+            -_filterThoughts(stream) AsyncGenerator
+        }
+    }
+
+    namespace Local {
+        class LocalModelProvider {
+            +getModelName() string
+            +chat(messages) Promise
+            +chatStream(messages) AsyncGenerator
+        }
+    }
+
+    BaseLLMProvider          <|-- OpenAICompatibleProvider
+    BaseLLMProvider          <|-- LocalModelProvider
+    OpenAICompatibleProvider <|-- GroqProvider
+    OpenAICompatibleProvider <|-- OpenRouterProvider
+    OpenAICompatibleProvider <|-- GeminiProvider
+    GeminiProvider           <|-- GemmaProvider
+```
+
+### Class responsibilities
+
+| Swimlane | Class | Description |
+|---|---|---|
+| **Base** | `BaseLLMProvider` | Abstract base — defines the `chat` / `chatStream` / `getModelName` contract |
+| **OpenAI Compatible** | `OpenAICompatibleProvider` | Shared OpenAI-format HTTP fetch + SSE parser inherited by all cloud providers |
+| **Cloud Providers** | `GroqProvider` | Thin wrapper for api.groq.com — default provider, low latency |
+| | `OpenRouterProvider` | Thin wrapper for openrouter.ai — auto-fallback when Groq returns 429 |
+| | `GeminiProvider` | Adds `chatStreamMultimodal()` for image and PDF payloads via Google AI Studio |
+| | `GemmaProvider` | Extends Gemini; filters `<thought>` blocks from Gemma 4 31B output |
+| **Local** | `LocalModelProvider` | Hybrid pipeline: Groq classifies → ONNX model generates code → Groq verifies |

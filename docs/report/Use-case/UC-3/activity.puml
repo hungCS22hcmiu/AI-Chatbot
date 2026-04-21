@@ -1,0 +1,51 @@
+@startuml UC-3 Create New Chat Session
+
+skinparam ActivityBackgroundColor #f0f4ff
+skinparam ActivityBorderColor #4a6cf7
+skinparam ArrowColor #4a6cf7
+skinparam SwimlaneBorderColor #4a6cf7
+
+|User|
+start
+:Click "New Chat";
+
+|Frontend|
+:POST /api/chats;
+
+|Server|
+:authMiddleware – verify JWT;
+if (JWT valid?) then (no)
+  :Return 401;
+  |Frontend|
+  :POST /api/refresh;
+  |Server|
+  if (Refresh token valid?) then (no)
+    :Return 401;
+    |Frontend|
+    :Force logout;
+    stop
+  else (yes)
+    :Issue new access token;
+  endif
+  |Frontend|
+  :Retry POST /api/chats;
+  |Server|
+else (yes)
+endif
+
+|Database|
+:INSERT INTO chats\n(user_id, title="New Chat");
+:Return new chat row;
+
+|Server|
+:Return 201 – chat object;
+
+|Frontend|
+:Add chat to sidebar list;
+:Navigate to new chat view;
+
+|User|
+:See empty chat – ready to type;
+
+stop
+@enduml

@@ -1,0 +1,57 @@
+@startuml UC-9 Perform Web Search for Real-time Info
+
+skinparam ActivityBackgroundColor #f0f4ff
+skinparam ActivityBorderColor #4a6cf7
+skinparam ArrowColor #4a6cf7
+skinparam SwimlaneBorderColor #4a6cf7
+
+|User|
+start
+:Send a time-sensitive query\n(e.g. "today's weather",\n"latest AI news");
+
+|Frontend|
+:POST /api/chats/stream {message};
+
+|Server|
+:authMiddleware – verify JWT;
+:searchDocuments() – RAG first;
+if (TAVILY_API_KEY set?) then (no)
+  :Skip web search;
+else (yes)
+  :needsWebSearch(query)\ncheck for keywords:\ntoday / weather / news /\nprice / latest / now;
+  if (Keywords matched?) then (no)
+    :Skip web search;
+  else (yes)
+    :searchWeb(query, maxResults=5);
+
+    |Tavily API|
+    :POST /search {query};
+    :Return [{title, url, snippet}];
+
+    |Server|
+    :Format results as\ncontext snippets;
+    :Prepend as system message;
+    :Send event:info\n"Searching the web…";
+
+    |Frontend|
+    :Display info notice to user;
+  endif
+endif
+
+|Server|
+:chatStream(messages + web context);
+
+|LLM Provider|
+:Stream response with\nup-to-date information;
+
+|Server|
+:Forward event:token via SSE;
+
+|Frontend|
+:Render response live;
+
+|Database|
+:INSERT assistant message;
+
+stop
+@enduml

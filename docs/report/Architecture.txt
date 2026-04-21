@@ -1,21 +1,131 @@
+## System Architecture
+
+CodeThium is a containerised, full-stack AI chatbot with hybrid LLM support.
+All four services run under Docker Compose and communicate over an internal Docker network.
+
+### Services
+
+- **frontend** – React SPA (Create React App) compiled and served by nginx on port 3000.
+  Communicates with the backend exclusively via REST and SSE (Server-Sent Events).
+- **server** – Node.js / Express API on port 4000.
+  Handles authentication, chat CRUD, file uploads, RAG retrieval, LLM orchestration, and
+  SSE streaming to the client.
+- **postpres** – PostgreSQL 16 on port 5433.
+  Stores users, chats, normalised messages, uploaded documents (with FTS), and refresh tokens.
+  Schema is managed by sequential SQL migration files run on server startup.
+- **local-model** – FastAPI service on port 8000.
+  Runs a quantised ONNX Runtime model (CodeThium) for on-premise Python code generation.
+  Consumed by the server when the user selects "CodeThium Local".
+
+### External Dependencies (cloud, no container)
+
+- **Groq API** – hosted Llama 3 inference (low-latency, default provider).
+- **OpenRouter API** – hosted Llama 3 via openrouter.ai; automatic 429 fallback target from Groq.
+- **Google AI Studio (Gemini / Gemma)** – Gemini 2.5 Flash (multimodal: images + PDFs) and
+  Gemma 4 31B (text, with `<thought>` block filtering).
+- **Tavily Search API** – real-time web search; injected as a system message when the query
+  contains time-sensitive keywords. Silently disabled when `TAVILY_API_KEY` is absent.
+
+### Request Flow
+
+1. User authenticates → `POST /api/login` → httpOnly cookies (`token` 15 min, `refresh_token` 7 days).
+2. User sends a message → frontend POSTs to `POST /api/chats/stream`.
+3. Server middleware verifies JWT; on 401 the client retries after `POST /api/refresh`.
+4. Server performs RAG: PostgreSQL FTS query (`plainto_tsquery`) over the user's stored documents.
+5. Server optionally performs web search (Tavily) for time-sensitive queries.
+6. RAG + web-search snippets are prepended as ephemeral system messages.
+7. Request is routed to the selected LLM provider; response streams back as SSE (`event: token`).
+8. On stream completion the assistant message is persisted to `messages` table.
+
+```mermaid
 graph TD
-    Browser["🌐 Browser\nReact 19"]
+    User(["👤 User (Browser)"])
 
-    subgraph Docker["Docker Compose"]
-        Frontend["Frontend\nnginx : 3000\nReact static files"]
-        Server["Express Server\nNode.js : 4000\nAuth · Chat CRUD · SSE Streaming"]
-        LocalModel["Local AI Model\nFastAPI + PyTorch : 8000\n2.6M param Transformer\nPython code generation"]
-        DB["PostgreSQL : 5433\nusers · chats · messages"]
+    subgraph Docker["🐳  Docker Compose"]
+        direction LR
+        FE["<b>frontend</b><br/>nginx · port 3000<br/>React SPA"]
+        SV["<b>server</b><br/>Express · port 4000<br/>Auth / Chat / Upload / RAG / SSE"]
+        DB[("<b>postpres</b><br/>PostgreSQL · port 5433<br/>users · chats · messages<br/>documents · refresh_tokens")]
+        LM["<b>local-model</b><br/>FastAPI · port 8000<br/>CodeThium ONNX<br/>(Python codegen)"]
+
+        FE -->|"REST + SSE"| SV
+        SV -->|"SQL"| DB
+        SV -->|"HTTP /chat"| LM
     end
 
-    subgraph ExternalAPIs["External LLM APIs"]
-        OpenRouter["OpenRouter\nLlama 3 · Mistral · Gemma\n(free tier)"]
-        Groq["Groq\nLlama 3 fast inference\n(free tier)"]
+    subgraph Cloud["☁️  External APIs"]
+        direction LR
+        GROQ["<b>Groq API</b><br/>Llama 3<br/>(default)"]
+        OR["<b>OpenRouter API</b><br/>Llama 3<br/>(429 fallback)"]
+        GEM["<b>Google AI Studio</b><br/>Gemini 2.5 Flash<br/>Gemma 4 31B"]
+        TAV["<b>Tavily Search API</b><br/>(web search)"]
     end
 
-    Browser <-->|"HTTP / SSE"| Frontend
-    Frontend <-->|"REST + SSE streaming"| Server
-    Server <-->|"SQL"| DB
-    Server <-->|"POST /chat"| LocalModel
-    Server <-->|"OpenAI-compatible API"| OpenRouter
-    Server <-->|"OpenAI-compatible API"| Groq
+    User -->|"HTTPS"| FE
+    SV -->|"OpenAI-compat"| GROQ
+    SV -->|"OpenAI-compat"| OR
+    SV -->|"OpenAI-compat<br/>(multimodal)"| GEM
+    SV -->|"search query"| TAV
+```
+
+### Authentication & Security
+
+- Passwords hashed with bcrypt (12 rounds); minimum 12 characters enforced via Zod.
+- JWTs: 15-minute access token + 7-day refresh token (SHA-256 hashed before DB storage).
+- Tokens delivered exclusively as httpOnly cookies (no `localStorage`).
+- Rate limiting: 15 req/min on auth routes, 60 req/min on stream, 30 req/min on upload.
+- CORS origin restricted to `CORS_ORIGIN` env var.
+
+### File Upload & RAG Pipeline
+
+```mermaid
+flowchart LR
+    Upload["POST /api/upload/*"] --> Parser["fileParser.js\nextractText / extractFullText"]
+    Parser -->|"full text"| RAGStore["rag.js\nstoreDocument()\nPostgreSQL documents table"]
+    Parser -->|"8 K truncated text\nor base64 image/PDF"| Client["returned to client"]
+    Client -->|"included in stream body"| Stream["POST /api/chats/stream"]
+    Stream -->|"FTS query"| RAGSearch["searchDocuments()\nplainto_tsquery"]
+    RAGSearch -->|"context snippets"| LLM["LLM Provider"]
+```
+
+- **Images** → base64 data URL → auto-routed to `GeminiProvider.chatStreamMultimodal()`.
+- **PDFs** → base64 (native PDF to Gemini) + full text stored for RAG.
+- **Text / code files** → truncated inline context + full text stored for RAG.
+- Only `{type, name}` metadata is persisted to the DB; base64 payloads are never stored.
+
+### LLM Provider Hierarchy
+
+```mermaid
+classDiagram
+    class BaseLLMProvider {
+        +chatStream(messages, onToken)
+    }
+    class OpenAICompatibleProvider {
+        +_readSSEStream()
+    }
+    class OpenRouterProvider
+    class GroqProvider
+    class GeminiProvider {
+        +chatStreamMultimodal()
+    }
+    class GemmaProvider {
+        +_filterThoughts()
+    }
+    class LocalModelProvider
+
+    BaseLLMProvider <|-- OpenAICompatibleProvider
+    OpenAICompatibleProvider <|-- OpenRouterProvider
+    OpenAICompatibleProvider <|-- GroqProvider
+    OpenAICompatibleProvider <|-- GeminiProvider
+    GeminiProvider <|-- GemmaProvider
+    BaseLLMProvider <|-- LocalModelProvider
+```
+
+### SSE Event Protocol
+
+```
+event: token   data: {"content":"Hello"}          — incremental LLM output
+event: info    data: {"message":"..."}             — status notice (fallback, web search)
+event: done    data: {"messageId":42,"model":"…"}  — stream complete, message persisted
+event: error   data: {"error":"Streaming failed"}  — unrecoverable error
+```

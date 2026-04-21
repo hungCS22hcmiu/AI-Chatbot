@@ -1,0 +1,43 @@
+@startuml UC-8 Select AI Provider and Model
+
+skinparam ActivityBackgroundColor #f0f4ff
+skinparam ActivityBorderColor #4a6cf7
+skinparam ArrowColor #4a6cf7
+skinparam SwimlaneBorderColor #4a6cf7
+
+|User|
+start
+:Open model selector dropdown\nin the chat input bar;
+:Select a model\n(Groq / OpenRouter / Local /\nGemini / Gemma);
+
+|Frontend|
+:Save selection to localStorage;
+:Update component state;
+if (Image or PDF attached\nand non-multimodal selected?) then (yes)
+  :Auto-switch to Gemini;
+  :Show tooltip\n"Auto-switched to multimodal model";
+else (no)
+endif
+
+|User|
+:Type message and press Send;
+
+|Frontend|
+:POST /api/chats/stream\n{message, model: selectedModel};
+
+|Server|
+:authMiddleware – verify JWT;
+:getProvider(model)\n→ LLMFactory;
+
+|LLM Provider|
+:chatStream(messages);
+:Stream token chunks;
+
+|Server|
+:Forward event:token via SSE;
+
+|Frontend|
+:Render response live;
+
+stop
+@enduml

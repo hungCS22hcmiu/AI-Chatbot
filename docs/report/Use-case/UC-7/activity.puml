@@ -1,0 +1,70 @@
+@startuml UC-7 Manage Chat History
+
+skinparam ActivityBackgroundColor #f0f4ff
+skinparam ActivityBorderColor #4a6cf7
+skinparam ArrowColor #4a6cf7
+skinparam SwimlaneBorderColor #4a6cf7
+
+|User|
+start
+:View chat list in sidebar;
+if (Action?) then (Rename)
+  :Click rename on a chat;
+  :Enter new title;
+
+  |Frontend|
+  :PUT /api/chats/:id {title};
+
+  |Server|
+  :authMiddleware – verify ownership;
+
+  |Database|
+  :UPDATE chats SET title\nWHERE id AND user_id;
+  :Return updated row;
+
+  |Server|
+  :Return 200 OK;
+
+  |Frontend|
+  :Update title in sidebar;
+
+  |User|
+  :See new title in sidebar;
+else (Delete)
+  :Click delete on a chat;
+
+  |Frontend|
+  :Show confirmation dialog;
+
+  |User|
+  if (Confirmed?) then (no)
+    :Cancel;
+    stop
+  else (yes)
+  endif
+
+  |Frontend|
+  :DELETE /api/chats/:id;
+
+  |Server|
+  :authMiddleware – verify ownership;
+
+  |Database|
+  :DELETE FROM chats\nWHERE id AND user_id;
+
+  |Server|
+  :Return 200 OK;
+
+  |Frontend|
+  :Remove chat from sidebar;
+  if (Deleted chat was active?) then (yes)
+    :Navigate to another chat;
+  else (no)
+  endif
+
+  |User|
+  :Chat no longer visible;
+endif
+
+stop
+@enduml

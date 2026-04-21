@@ -1,0 +1,60 @@
+@startuml UC-4 Send Message and Stream AI Response
+
+skinparam ActivityBackgroundColor #f0f4ff
+skinparam ActivityBorderColor #4a6cf7
+skinparam ArrowColor #4a6cf7
+skinparam SwimlaneBorderColor #4a6cf7
+
+|User|
+start
+:Type message and press Send;
+
+|Frontend|
+:POST /api/chats/stream\n(message, model, chatId);
+
+|Database|
+:INSERT user message\ninto messages;
+
+|Server|
+:authMiddleware – verify JWT;
+:searchDocuments(userId, query);
+
+|Database|
+:FTS query\n(plainto_tsquery);
+:Return matching snippets;
+
+|Server|
+if (Snippets found?) then (yes)
+  :Prepend as system message;
+else (no)
+endif
+if (Time-sensitive query\n& Tavily key set?) then (yes)
+  :searchWeb(query);
+  :Prepend web results\nas system message;
+else (no)
+endif
+:getProvider(model);
+:chatStream(messages);
+
+|LLM Provider|
+:Stream token chunks;
+
+|Server|
+:Forward event:token via SSE;
+
+|Frontend|
+:Render tokens live;
+
+|Server|
+:Receive stream end;
+
+|Database|
+:INSERT assistant message\ninto messages;
+
+|Server|
+:Send event:done {messageId};
+
+|User|
+:Read final response;
+stop
+@enduml

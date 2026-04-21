@@ -1,0 +1,42 @@
+@startuml UC-1 Register Account
+
+skinparam ActivityBackgroundColor #f0f4ff
+skinparam ActivityBorderColor #4a6cf7
+skinparam ArrowColor #4a6cf7
+skinparam SwimlaneBorderColor #4a6cf7
+
+|User|
+start
+:Fill registration form\n(username, email, password);
+:Submit form;
+
+|Frontend|
+if (Fields valid?\nPassword ≥ 12 chars?) then (no)
+  :Show validation error;
+  stop
+else (yes)
+endif
+:POST /api/register;
+
+|Server|
+if (Username or email\nalready exists?) then (yes)
+  :Return 409 Conflict;
+  |Frontend|
+  :Show "already taken" error;
+  stop
+else (no)
+endif
+:Hash password\n(bcrypt, 12 rounds);
+
+|Database|
+:INSERT INTO users\n(username, email, password_hash);
+:Return new user row;
+
+|Server|
+:Return 201 Created;
+
+|Frontend|
+:Redirect to Login page;
+
+stop
+@enduml

@@ -1,0 +1,56 @@
+@startuml UC-5 Upload and Analyze Images
+
+skinparam ActivityBackgroundColor #f0f4ff
+skinparam ActivityBorderColor #4a6cf7
+skinparam ArrowColor #4a6cf7
+skinparam SwimlaneBorderColor #4a6cf7
+
+|User|
+start
+:Click image upload button\nand select an image file;
+
+|Frontend|
+:POST /api/upload/image\n(multipart/form-data);
+
+|Server|
+if (File size ≤ 5 MB?) then (no)
+  :Return 400 – file too large;
+  |Frontend|
+  :Show upload error;
+  stop
+else (yes)
+endif
+:Convert buffer to\nbase64 data URL;
+:Return {type:"image", name, dataUrl};
+
+|Frontend|
+:Display image thumbnail preview;
+if (Selected model is\nnon-multimodal?) then (yes)
+  :Auto-switch model to Gemini;
+else (no)
+endif
+
+|User|
+:Add optional text prompt\nand press Send;
+
+|Frontend|
+:POST /api/chats/stream\n(message, model:"gemini", attachments);
+
+|Server|
+:Route to GeminiProvider\n.chatStreamMultimodal();
+
+|Gemini API|
+:Build multimodal parts\n(text + inlineData image);
+:Stream response tokens;
+
+|Server|
+:Forward event:token via SSE;
+
+|Frontend|
+:Render image analysis live;
+
+|Database|
+:INSERT assistant message;
+
+stop
+@enduml

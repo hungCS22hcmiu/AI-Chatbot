@@ -1,0 +1,60 @@
+@startuml UC-6 Upload and Query PDF Documents
+
+skinparam ActivityBackgroundColor #f0f4ff
+skinparam ActivityBorderColor #4a6cf7
+skinparam ArrowColor #4a6cf7
+skinparam SwimlaneBorderColor #4a6cf7
+
+|User|
+start
+:Click file upload and\nselect a PDF;
+
+|Frontend|
+:POST /api/upload/file\n(multipart/form-data);
+
+|Server|
+if (File size ≤ 5 MB?) then (no)
+  :Return 400;
+  |Frontend|
+  :Show upload error;
+  stop
+else (yes)
+endif
+:extractText() – 8K truncated\n(for inline LLM context);
+:extractFullText() – complete text\n(for RAG);
+
+|Database|
+:INSERT INTO documents\n(userId, chatId, filename, content);
+:content_fts auto-generated\nby tsvector trigger;
+
+|Server|
+:Return {type:"pdf", name, text};
+
+|Frontend|
+:Show PDF attachment chip;
+
+|User|
+:Type question about the PDF\nand press Send;
+
+|Frontend|
+:POST /api/chats/stream\n(message, attachments:[pdf]);
+
+|Server|
+:searchDocuments(userId, query)\nFTS on documents table;
+:Prepend RAG snippets +\ninline text as system messages;
+:chatStream(messages);
+
+|LLM Provider|
+:Stream answer grounded\nin PDF content;
+
+|Server|
+:Forward event:token via SSE;
+
+|Frontend|
+:Render answer live;
+
+|Database|
+:INSERT assistant message;
+
+stop
+@enduml

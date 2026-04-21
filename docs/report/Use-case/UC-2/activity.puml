@@ -1,0 +1,48 @@
+@startuml UC-2 User Login
+
+skinparam ActivityBackgroundColor #f0f4ff
+skinparam ActivityBorderColor #4a6cf7
+skinparam ArrowColor #4a6cf7
+skinparam SwimlaneBorderColor #4a6cf7
+
+|User|
+start
+:Enter username/email\nand password;
+:Submit login form;
+
+|Frontend|
+:POST /api/login;
+
+|Server|
+if (User found in DB?) then (no)
+  :Return 401 Unauthorized;
+  |Frontend|
+  :Show "Invalid credentials";
+  stop
+else (yes)
+endif
+:bcrypt.compare(password, hash);
+if (Password matches?) then (no)
+  :Return 401 Unauthorized;
+  |Frontend|
+  :Show "Invalid credentials";
+  stop
+else (yes)
+endif
+:signAccessToken() – 15 min JWT;
+:signRefreshToken() – 64-byte hex;
+:hashToken(refreshToken);
+
+|Database|
+:INSERT INTO refresh_tokens\n(user_id, token_hash, expires_at);
+
+|Server|
+:Set httpOnly cookies\n(token + refresh_token);
+:Return user profile;
+
+|Frontend|
+:Store user in AuthContext;
+:Redirect to Chat page;
+
+stop
+@enduml

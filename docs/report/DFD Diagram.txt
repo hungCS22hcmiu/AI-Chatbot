@@ -1,0 +1,121 @@
+## Data Flow Diagram (DFD) – CodeThium AI Chatbot
+
+Two levels are provided: a high-level context diagram (Level 0) and a
+process-level breakdown (Level 1).
+
+---
+
+### Level 0 – Context Diagram
+
+Shows the whole system as a single process and identifies every external entity
+that sends data to or receives data from it.
+
+```mermaid
+flowchart LR
+    U(["👤 User"])
+    GROQ(["Groq API"])
+    OR(["OpenRouter API"])
+    GEM(["Google AI Studio"])
+    TAV(["Tavily Search API"])
+    LM(["Local Model\nFastAPI"])
+
+    SYS(["⚙️ CodeThium\nSystem"])
+
+    U   -->|"credentials / message / file"| SYS
+    SYS -->|"auth token / chat response (SSE)"| U
+
+    SYS -->|"chat messages"| GROQ
+    GROQ -->|"LLM response stream"| SYS
+
+    SYS -->|"chat messages"| OR
+    OR  -->|"LLM response stream"| SYS
+
+    SYS -->|"chat messages + images/PDFs"| GEM
+    GEM -->|"LLM response stream"| SYS
+
+    SYS -->|"search query"| TAV
+    TAV -->|"search results"| SYS
+
+    SYS -->|"prompt"| LM
+    LM  -->|"generated code"| SYS
+```
+
+---
+
+### Level 1 – Process Decomposition
+
+Breaks the system into its five core processes and shows how data moves
+between them and the four data stores.
+
+```mermaid
+flowchart TD
+    %% ── External entities ────────────────────────────────────────────────
+    U(["👤 User"])
+    EXT_LLM(["☁️ LLM Providers\nGroq · OpenRouter · Gemini · Gemma"])
+    EXT_TAV(["🌐 Tavily Search API"])
+    EXT_LM(["🖥️ Local Model\nFastAPI :8000"])
+
+    %% ── Data stores ──────────────────────────────────────────────────────
+    DS1[("D1 · Users\n& Refresh Tokens")]
+    DS2[("D2 · Chats\n& Messages")]
+    DS3[("D3 · Documents\nRAG Store")]
+
+    %% ── Processes ────────────────────────────────────────────────────────
+    P1(["P1\nAuthentication"])
+    P2(["P2\nChat Management"])
+    P3(["P3\nFile Upload\n& Parsing"])
+    P4(["P4\nRAG Retrieval\n& Web Search"])
+    P5(["P5\nLLM Orchestration\n& SSE Streaming"])
+
+    %% ── User → Auth ──────────────────────────────────────────────────────
+    U       -->|"credentials"| P1
+    P1      -->|"read / write user + token"| DS1
+    P1      -->|"JWT cookies (access + refresh)"| U
+
+    %% ── User → Chat ──────────────────────────────────────────────────────
+    U       -->|"message + model + attachments"| P2
+    P2      -->|"save / load chats & messages"| DS2
+    P2      -->|"chat history (messages)"| U
+
+    %% ── User → File Upload ───────────────────────────────────────────────
+    U       -->|"image / PDF / text file"| P3
+    P3      -->|"extracted text (full)"| DS3
+    P3      -->|"inline text / base64 URL"| P2
+
+    %% ── Chat → RAG + Web Search ──────────────────────────────────────────
+    P2      -->|"user query + userId"| P4
+    P4      -->|"FTS query"| DS3
+    DS3     -->|"matching document snippets"| P4
+    P4      -->|"search query"| EXT_TAV
+    EXT_TAV -->|"live web results"| P4
+    P4      -->|"context snippets (system messages)"| P5
+
+    %% ── Chat → LLM ───────────────────────────────────────────────────────
+    P2      -->|"full message history + model choice"| P5
+    P5      -->|"prompt"| EXT_LLM
+    EXT_LLM -->|"token stream"| P5
+    P5      -->|"prompt"| EXT_LM
+    EXT_LM  -->|"generated code"| P5
+    P5      -->|"SSE token stream"| U
+    P5      -->|"completed assistant message"| DS2
+```
+
+---
+
+### Process descriptions
+
+| Process | Inputs | Outputs | Data stores touched |
+|---|---|---|---|
+| **P1 Authentication** | credentials (register / login / refresh / logout) | JWT cookies, user profile | D1 Users & Refresh Tokens |
+| **P2 Chat Management** | user message, model choice, attachments | chat list, message history, triggers P4 + P5 | D2 Chats & Messages |
+| **P3 File Upload & Parsing** | raw file (image / PDF / text) | base64 URL or inline text to P2; full text to D3 | D3 Documents |
+| **P4 RAG Retrieval & Web Search** | user query, userId | context snippets injected as system messages into P5 | D3 Documents (read) |
+| **P5 LLM Orchestration & SSE Streaming** | message history + context + model | SSE token stream to user; completed message saved to D2 | D2 Messages (write) |
+
+### Data stores
+
+| Store | Table(s) | Purpose |
+|---|---|---|
+| **D1** | `users`, `refresh_tokens` | Account credentials and hashed JWT refresh tokens |
+| **D2** | `chats`, `messages` | All chat sessions and their normalised message rows |
+| **D3** | `documents` | Full extracted text of uploaded files with FTS index for RAG |

@@ -1,0 +1,38 @@
+@startuml UC-10 User Logout
+
+skinparam ActivityBackgroundColor #f0f4ff
+skinparam ActivityBorderColor #4a6cf7
+skinparam ArrowColor #4a6cf7
+skinparam SwimlaneBorderColor #4a6cf7
+
+|User|
+start
+:Click "Sign Out"\nin Settings panel;
+
+|Frontend|
+:POST /api/logout;
+
+|Server|
+:Read refresh_token\nfrom httpOnly cookie;
+if (Refresh token cookie present?) then (yes)
+  :hashToken(refreshToken) – SHA-256;
+
+  |Database|
+  :DELETE FROM refresh_tokens\nWHERE token_hash = hash;
+
+  |Server|
+else (no)
+endif
+:res.clearCookie("token");
+:res.clearCookie("refresh_token");
+:Return 200 OK;
+
+|Frontend|
+:AuthContext.logout()\nclear user state;
+:Redirect to Login page;
+
+|User|
+:Session ended –\nLogin page shown;
+
+stop
+@enduml

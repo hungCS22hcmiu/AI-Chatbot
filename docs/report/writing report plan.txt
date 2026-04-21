@@ -2,3 +2,4 @@
 - ask CLaude for mermaid diagram for Activity, Sequence for each UC
 - Claude for ERD diagram, System architecture, DFD and class diagram
 - Ask Gemini for writing Planning, Requirement Specification and Reference
+- use claude cowork to write docx report
