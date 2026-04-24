@@ -1,0 +1,180 @@
+CodeThium — Presentation Script (~18 minutes, 16 slides)
+Group 11 | Software Engineering IT076IU
+========================================================
+
+Speaker assignments:
+  Member 1 — Lê Hưng          : Slides 9, 10, 11, 15, 16
+  Member 2 — Đặng Danh Hương  : Slides 12, 13, 14
+  Member 3 — Nguyễn Minh Tuấn : Slides 7, 8
+  Member 4 — Lê Nhật Anh      : Slides 5, 6
+  Member 5 — Cao Ngọc Anh Tuấn: Slides 3, 4
+  Member 6 — Đỗ Hoàng Minh    : Slides 1, 2
+
+========================================================
+
+--- SLIDE 1 — Introduction [Member 6: Đỗ Hoàng Minh] ---
+
+"Good [morning/afternoon], everyone. We are Group 11, and today we present CodeThium — a full-stack AI chatbot system built for Software Engineering IT076IU.
+
+Our team has six members: Lê Hưng is our project leader. Our members are Đặng Danh Hương, Nguyễn Minh Tuấn, Lê Nhật Anh, Cao Ngọc Anh Tuấn, and I am Đỗ Hoàng Minh.
+
+CodeThium is a multi-provider AI assistant that brings together six capabilities in one platform: real-time streaming chat, support for five AI backends, file and image upload with analysis, retrieval-augmented generation from your own documents, live web search for time-sensitive queries, and an on-premise Python code generation model that runs entirely inside Docker. Over the next 18 minutes we will walk through the requirements, system design, and a live demo."
+
+
+--- SLIDE 2 — System Overview & Technology Stack [Member 6: Đỗ Hoàng Minh] ---
+
+"CodeThium is composed of four services running under Docker Compose. The React frontend is served by nginx on port 3000. The Express backend runs on port 4000 — it is the system's brain, handling authentication, chat, file processing, LLM orchestration, and SSE streaming. PostgreSQL runs on port 5433, storing all user data and providing the full-text search index powering our RAG pipeline. And the local model is a FastAPI service on port 8000 that serves an ONNX Runtime model for Python code generation.
+
+On the frontend we use React, Tailwind CSS, and Framer Motion for a smooth animated UI with dark and light theme support. The backend uses Node.js and Express. The database is PostgreSQL 16. The AI integrations cover Groq, OpenRouter, Google Gemini, Gemma 4, and our own local model."
+
+
+--- SLIDE 3 — Use Case Diagram [Member 5: Cao Ngọc Anh Tuấn] ---
+
+"This is the use case diagram for CodeThium. We have one primary actor — the Customer, the end user who interacts through the browser — and two external system actors: the LLM Providers, which are the cloud AI services, and the Search Service, which is the Tavily real-time web search API.
+
+The Customer can perform ten use cases. Authentication is at the boundary — register, login, and logout guard access to everything else. Inside the system, the Customer manages chat sessions, sends messages and receives streamed AI responses, uploads files and images, chooses the AI backend, and the system automatically performs web search on their behalf for time-sensitive queries. All ten use cases together define the complete scope of what CodeThium does."
+
+
+--- SLIDE 4 — Functional Requirements: 10 Use Cases [Member 5: Cao Ngọc Anh Tuấn] ---
+
+"Let me walk through the ten functional requirements. They fall into three groups.
+
+Authentication — UC-1 Register Account, UC-2 User Login, UC-10 Logout. These form the security perimeter: every user's chats and documents are strictly private.
+
+Core chat management — UC-3 Create New Chat Session, UC-4 Send Message and Stream AI Response, and UC-7 Manage Chat History for renaming and deleting sessions. UC-4 is the most important use case in the entire system — it is the central flow that all other advanced capabilities either extend or depend upon.
+
+Advanced capabilities — UC-5 Upload and Analyze Images, UC-6 Upload and Query PDF Documents, UC-8 Select AI Provider and Model, and UC-9 Perform Web Search for Real-time Info. These are what differentiate CodeThium from a plain chat interface. Together, these ten use cases cover the full user lifecycle from registration to a grounded, document-aware AI conversation."
+
+
+--- SLIDE 5 — Activity Diagram: UC-4 [Member 4: Lê Nhật Anh] ---
+
+"This activity diagram shows the complete flow for UC-4 — Send Message and Stream AI Response — across five swimlanes: User, Frontend, Database, Server, and LLM Provider.
+
+The user types a message and presses Send. The frontend POSTs to the stream endpoint and the database immediately saves the user message. The server then runs auth verification and calls searchDocuments — the RAG retrieval against the documents store. If snippets are found, they are prepended as a system message. The server checks for time-sensitive keywords and optionally calls searchWeb for live results. It then calls getProvider and chatStream to begin the LLM request. The LLM streams back token chunks, the server forwards them as SSE events, and the frontend renders each token live. When the stream ends, the server inserts the completed assistant message and emits a done event. The user sees the full response."
+
+
+--- SLIDE 6 — Sequence Diagram: UC-4 [Member 4: Lê Nhật Anh] ---
+
+"The sequence diagram shows the same flow from a message-passing perspective across six lifelines: User, Frontend, Server, RAGService, LLMProvider, and DB.
+
+The user triggers the Frontend which POSTs to the Server. The Server immediately saves the user message to the DB, then calls RAGService with the userId and message. RAGService runs a plainto_tsquery FTS query against the DB and returns matching snippets. The Server prepends these as a context system message, then calls chatStream on the LLMProvider. The sequence enters a loop — the LLMProvider streams token chunks back to the Server, which forwards each as an SSE event:token to the Frontend. The Frontend renders each token live. When the stream ends, the Server inserts the assistant message into the DB, receives the messageId back, and sends an event:done to the Frontend. The user sees the final response."
+
+
+--- SLIDE 7 — Non-Functional Requirements [Member 3: Nguyễn Minh Tuấn] ---
+
+"Our non-functional requirements cover four areas.
+
+Security: passwords are bcrypt-hashed with 12 rounds. The minimum password length is 12 characters, enforced at the API layer by Zod validation. JWT access tokens expire after 15 minutes, paired with a 7-day httpOnly refresh token for seamless re-authentication — tokens are never stored in localStorage. Rate limiting is enforced: 15 requests per minute on auth routes, 60 on streaming, 30 on upload.
+
+Performance: Server-Sent Events streaming means the user sees the first token within milliseconds — not waiting for the full response.
+
+Scalability: four isolated Docker services that communicate over an internal Docker network and can each be scaled or replaced independently.
+
+Usability: responsive dark and light themed UI, smooth animations, one-click model switching, and a session-expired modal that handles token expiry gracefully without losing the user's context."
+
+
+--- SLIDE 8 — System Architecture Overview [Member 3: Nguyễn Minh Tuấn] ---
+
+"Here is the system architecture. Four services run inside Docker Compose and communicate over an internal Docker network. The React frontend talks only to the Express backend via REST and SSE — it never contacts any LLM directly. The backend is the single orchestrator: it validates JWT tokens, manages chat CRUD, runs RAG, calls web search, selects the LLM provider, and manages the SSE stream.
+
+Outside Docker, four external APIs integrate with the backend. Groq API provides hosted Llama 3 inference and is the default provider for its low latency. OpenRouter is a fallback — when Groq returns a 429 rate limit error, the backend automatically retries on OpenRouter. Google AI Studio serves two models: Gemini 2.5 Flash for multimodal tasks involving images and PDFs, and Gemma 4 31B for extended reasoning. The Tavily Search API provides live web results and is silently disabled when the API key is absent.
+
+This design means the frontend is stateless and simple. All intelligence — routing, context injection, fallback — lives in the backend layer."
+
+
+--- SLIDE 9 — Request Flow: The Chat Pipeline [Member 1: Lê Hưng] ---
+
+"This is the complete request flow when a user sends a message. Step one: the user submits a message — the frontend POSTs to POST /api/chats/stream with the message, model choice, and any attachments. Step two: the auth middleware verifies the JWT from the httpOnly cookie; if expired, the client silently calls the refresh endpoint and retries. Step three: the server saves the user message to the messages table and loads the last 20 messages as LLM conversation history. Step four: if there are no attachments and the message is not small-talk, the RAG pipeline runs — a plainto_tsquery full-text search returns up to four relevant document snippets. Step five: if the query contains time-sensitive keywords and a Tavily key is configured, a live web search runs. Step six: RAG snippets and web results are prepended as ephemeral system messages — they are never persisted to the database. Step seven: the enriched history goes to the selected LLM provider and the response streams back as SSE event:token events. Step eight: on stream completion, the full assistant message is saved and event:done is sent."
+
+
+--- SLIDE 10 — Data Flow Diagram Level 0 [Member 1: Lê Hưng] ---
+
+"The Level 0 context diagram treats the entire CodeThium system as a single black box. It shows every external entity that sends data to or receives data from the system. The User sends credentials, messages, and files; the system returns auth tokens and streamed AI responses. Groq and OpenRouter receive chat messages and return LLM response streams. Google AI Studio receives chat messages with optional image or PDF payloads. Tavily receives search queries and returns live results. The Local Model receives prompts and returns generated Python code. This diagram confirms the full boundary of the system."
+
+
+--- SLIDE 11 — Data Flow Diagram Level 1 [Member 1: Lê Hưng] ---
+
+"The Level 1 diagram decomposes the system into five processes. P1 Authentication reads and writes the users and refresh tokens in data store D1 and returns JWT cookies. P2 Chat Management handles all CRUD for chats and messages in D2 and coordinates P4 and P5. P3 File Upload and Parsing extracts text from uploaded files, stores the full content in D3 the documents store, and returns inline context or a base64 URL to P2. P4 RAG Retrieval and Web Search reads from D3 and injects context snippets into P5. P5 LLM Orchestration and SSE Streaming calls the LLM providers, streams the response back to the user, and writes the completed message back to D2. This decomposition shows that no process has a circular dependency — data flows cleanly in one direction."
+
+
+--- SLIDE 12 — Class Diagram [Member 2: Đặng Danh Hương] ---
+
+"The class diagram models the LLM provider hierarchy. We defined an abstract BaseLLMProvider with three methods: chat, chatStream, and getModelName. This contract must be implemented by every provider.
+
+Cloud providers share an intermediate OpenAICompatibleProvider class — it handles the OpenAI-format HTTP request and the SSE stream parser. This works because Groq, OpenRouter, and Gemini all expose an OpenAI-compatible API. GroqProvider and OpenRouterProvider are thin wrappers — their only job is to supply the correct base URL, API key, and model name. This design gives us the Groq-to-OpenRouter 429 fallback almost for free.
+
+GeminiProvider extends the shared class and adds chatStreamMultimodal for image and PDF payloads. GemmaProvider extends GeminiProvider and adds a private _filterThoughts method that strips the reasoning blocks Gemma 4 31B emits before sending output to the client.
+
+LocalModelProvider is the outlier — it extends BaseLLMProvider directly and calls our internal FastAPI endpoint rather than any cloud API.
+
+The key benefit: adding a new LLM provider in the future requires only a minimal subclass — the streaming infrastructure is inherited."
+
+
+--- SLIDE 13 — Schema Diagram [Member 2: Đặng Danh Hương] ---
+
+"The PostgreSQL schema has five core tables. users stores accounts — username and email are unique, password is bcrypt-hashed. chats groups sessions per user. messages stores normalised per-message rows with a role column for user, assistant, or system, and a JSONB metadata column that holds only the file type and name of any attachment — the actual binary payload is never written to the database. The documents table is the RAG backbone: it stores full extracted text with a tsvector generated column and a GIN index for fast full-text search. refresh_tokens stores SHA-256-hashed refresh tokens with a 7-day expiry, one record per active session per user. All tables share a users parent through foreign keys — user data is fully isolated."
+
+
+--- SLIDE 14 — RAG Pipeline [Member 2: Đặng Danh Hương] ---
+
+"The RAG pipeline has two halves — ingestion at upload time and retrieval at query time.
+
+At upload time: the user uploads a file to POST /api/upload/file. The file parser runs two extractions in parallel. extractText produces a truncated 8-kilobyte version — this is returned to the client as inline context for the current message. extractFullText produces the complete untruncated text — this is passed to storeDocument which writes it to the documents table. PostgreSQL automatically builds a tsvector GIN index on the content, so no separate indexing step is needed. For PDFs, the full text goes into the documents table AND the raw bytes are also encoded as a base64 URL for Gemini's native PDF understanding. Images are not indexed — they go directly to Gemini at inference time.
+
+At query time: when the user sends a message, the system first checks isConversational — short greetings and acknowledgements skip RAG entirely. If the query has real intent, normalizeQuery strips filler phrases like 'can you help me understand' to expose core keywords. The FTS query runs using plainto_tsquery scoped to the current user's documents. ts_rank orders results and ts_headline generates readable snippets. Up to four snippets are returned. If the normalised query returns nothing, the system retries with the raw original query. Results are de-duplicated, then prepended as an ephemeral system message — the LLM gets grounded context without the user needing to re-upload or re-reference any document."
+
+
+--- SLIDE 15 — Live Demo [Member 1: Lê Hưng] ---
+
+[Switch to browser]
+
+"Now let's see CodeThium in action."
+
+[Step 1 — Login (~20 sec)]
+"I'll log in with an existing account. Authentication uses httpOnly cookies — no tokens are ever stored in localStorage."
+
+[Step 2 — Text message + streaming (~25 sec)]
+"I'll send a question to the Groq provider. Watch the response stream token-by-token — each token is a separate SSE event. The model selector lets me switch providers in one click."
+
+[Step 3 — PDF upload + RAG query (~40 sec)]
+"I'll upload a PDF. The full text is stored in the documents table for RAG. I'll ask a specific question about its content. The system runs a full-text search, injects the matching passage as context, and the AI answers precisely from the document — without me quoting it."
+
+[Step 4 — Image upload (~25 sec)]
+"Now an image. The system auto-routes this to Gemini's multimodal API. I'll ask it to describe what it sees."
+
+[Step 5 — Web search (~20 sec)]
+"A time-sensitive query — 'What is the latest AI news today?' — triggers the Tavily web search. You can see the info banner confirming live data was fetched."
+
+[Step 6 — Local model (~20 sec)]
+"Finally, I switch to CodeThium Local and ask for a Python function. This runs entirely in Docker via ONNX Runtime — zero external API calls."
+
+
+--- SLIDE 16 — Conclusion [Member 1: Lê Hưng] ---
+
+"To conclude: CodeThium delivers five things we are proud of. Hybrid LLM orchestration with automatic rate-limit fallback across five providers. Privacy by design — sensitive code stays on-premise and binary payloads never touch the database. Production-grade security through bcrypt, JWT rotation, rate limiting, and CORS restriction. Retrieval-augmented generation with PostgreSQL full-text search so the AI always has your document context. And live web search so answers stay current beyond any model's training cutoff. The system is designed to be extensible — adding a new LLM provider requires one subclass, and the RAG pipeline accepts any text, PDF, or code file. Thank you. We are happy to take questions."
+
+
+========================================================
+POTENTIAL Q&A — Optimal Answers
+========================================================
+
+Q1: Why PostgreSQL for full-text search instead of a vector database like Pinecone?
+"PostgreSQL's built-in tsvector and GIN indexing give us keyword-based full-text search with zero extra infrastructure — no additional service to deploy, configure, or pay for. Since our documents are user-uploaded text files with well-defined keywords rather than abstract semantics, plainto_tsquery is accurate enough. Adding a vector database would introduce embedding API costs, an extra Docker service, and synchronisation complexity. If we scale to semantic similarity search across millions of documents, a vector database would be the natural next step."
+
+Q2: Why Server-Sent Events instead of WebSockets?
+"SSE is a better fit because streaming is strictly one-directional — the server pushes tokens, the client never sends data back during the stream. SSE works over a standard HTTP connection with no handshake upgrade and is handled natively by fetch with response.body.getReader(). WebSockets suit bidirectional real-time communication. SSE keeps the backend simpler — the stream route is a regular POST handler that sets Content-Type: text/event-stream."
+
+Q3: How do you prevent malicious file uploads?
+"Three layers: multer enforces a 5MB cap and stores files in memory only — never written to disk as executables. The file parser only processes known safe MIME types such as PDF, plain text, and common code types — anything else returns a 415 error without processing. Extracted text is stored as a plain string in the database and only ever rendered as markdown, never executed. Base64 payloads sent to Gemini go through Google's own content safety checks."
+
+Q4: What happens if the JWT expires mid-session?
+"The stream endpoint verifies the JWT at request start, before the SSE connection opens. If valid at that point, the stream runs to completion. On a 401 before the stream opens, the client silently calls POST /api/refresh with the httpOnly refresh cookie and retries the original request transparently. If the refresh token is also expired or revoked, forceLogout is called, showing a session-expired modal. The user logs in again without losing chat history."
+
+Q5: Why run a local model at all?
+"The local model is a quantised ONNX model specialised for Python code generation. Its purpose is to handle code requests without sending potentially sensitive logic to an external API. LocalModelProvider uses a hybrid pipeline: Groq classifies intent, the ONNX model generates the code, and Groq verifies the output. The trade-off is that it is limited to Python and is slower than cloud providers, but it provides a privacy guarantee for on-premise use cases."
+
+Q6: How do you ensure users cannot access each other's data?
+"Every query is scoped to req.userId, extracted from the verified JWT by auth middleware. Chat ownership checks use WHERE id = $1 AND user_id = $2. The RAG FTS query includes WHERE user_id = $2. There is no endpoint that lists all users' data. If a user passes another user's chatId, the server returns 404, leaking nothing about whether that chat exists."
+
+Q7: What were the biggest technical challenges?
+"Three stand out. First, the PDF dual-path — we needed the native PDF bytes for Gemini's layout-aware understanding and the extracted text for RAG, running concurrently without blocking the upload response. Second, RAG query normalisation — naive keyword extraction produced poor results for conversational queries, so we built a filler-phrase stripping layer with a raw-query fallback for over-stripped edge cases. Third, the Gemini rate-limit fallback for PDF-only requests — unlike images, PDFs can fall back to a text provider by re-extracting text from the base64 payload and retrying with Groq or OpenRouter rather than showing an error."
